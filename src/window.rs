@@ -1,65 +1,64 @@
-use crate::error::OsError;
-use crate::event_loop::EventLoopWindowTarget;
-use crate::platform::*;
-use raw_window_handle::HasRawWindowHandle;
-use winit::window::Window as WWindow;
-use winit::window::WindowBuilder as WWindowBuilder;
+use parking_lot::RwLock;
+use crate::{error::OSError, event_loop::EventLoop};
+use crate::{Size, platform::WindowId};
+use std::sync::Arc;
+use bitflags::bitflags;
 
-pub use winit::window::{BadIcon, CursorIcon, Fullscreen, Icon, Theme, WindowAttributes, WindowId};
+bitflags! {
+    pub(crate) struct WindowToDo: u8 {
+        const REDRAW = 1 << 0;
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct WindowInner {
+    pub size: Size,
+    pub frame_buffer_ptr: *mut u8,
+    pub frame_buffer_len: usize,
+    pub todo: WindowToDo
+}
 
 #[derive(Debug)]
 pub struct Window {
-    inner: WWindow,
-    handle: Handle,
+    pub(crate) id: WindowId,
+    pub(crate) inner: Arc<RwLock<WindowInner>>,
 }
 
 impl Window {
-    pub fn new<T: 'static>(event_loop: &EventLoopWindowTarget<T>) -> Result<Window, OsError> {
-        WindowBuilder::new().build(event_loop)
+    pub fn size(&self) -> Size {
+        self.inner.read().size
     }
 
-    pub fn request_redraw(&self) {
-        self.inner.request_redraw();
+    pub fn width(&self) -> f64 {
+        self.inner.read().size.width
     }
 
-    pub fn frame_buffer(&mut self) -> &mut [u8] {
-        self.handle.frame_buffer()
+    pub fn height(&self) -> f64 {
+        self.inner.read().size.height
+    }
+
+    pub fn frame_buffer(&self) -> &mut [u8] {
+        let inner = self.inner.read();
+        unsafe { std::slice::from_raw_parts_mut(inner.frame_buffer_ptr, inner.frame_buffer_len) }
     }
 
     pub fn redraw(&mut self) {
-        self.handle.redraw();
-    }
-
-    pub fn width(&self) -> u32 {
-        self.handle.width()
-    }
-
-    pub fn height(&self) -> u32 {
-        self.handle.height()
+        self.inner.write().todo.insert(WindowToDo::REDRAW);
     }
 }
 
 #[derive(Debug)]
 pub struct WindowBuilder {
-    inner: WWindowBuilder,
+    pub(crate) width: f64,
+    pub(crate) height: f64,
 }
 
 impl WindowBuilder {
     pub fn new() -> WindowBuilder {
-        WindowBuilder {
-            inner: WWindowBuilder::new(),
-        }
+        WindowBuilder { width: 800.0, height: 600.0 }
     }
 
-    pub fn build<T: 'static>(
-        self,
-        window_target: &EventLoopWindowTarget<T>,
-    ) -> Result<Window, OsError> {
-        let winit_win = self.inner.build(window_target)?;
-        let handle = handle(winit_win.raw_window_handle());
-        Ok(Window {
-            inner: winit_win,
-            handle,
-        })
+    pub fn build(self, el: &EventLoop) -> Result<Window, OSError> {
+        el.create_window(self)
     }
 }

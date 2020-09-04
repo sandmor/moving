@@ -6,12 +6,12 @@ use moving::{
 use std::time::Instant;
 
 fn main() {
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoop::new().unwrap();
     let mut window = WindowBuilder::new().build(&event_loop).unwrap();
-    let mut start = Instant::now();
+    let start = Instant::now();
 
-    event_loop.run(move |event, _, control_flow| {
-        *control_flow = ControlFlow::Wait;
+    event_loop.run(move |event, control_flow| {
+        *control_flow = ControlFlow::Poll;
 
         match event {
             Event::WindowEvent {
@@ -22,19 +22,18 @@ fn main() {
                 *control_flow = ControlFlow::Exit
             }
             Event::MainEventsCleared => {
-                let w = window.width() as usize;
-                let h = window.height() as usize;
+                let size = window.size();
+                let w = size.width;
+                let h = size.height;
                 let frame_buffer = window.frame_buffer();
                 let mut x = 0.0;
                 let mut y = 0.0;
-                let fw = w as f64;
-                let fh = h as f64;
-                let cx = fw / 2.0;
-                let cy = fh / 2.0;
+                let cx = w / 2.0;
+                let cy = h / 2.0;
                 let t = Instant::now().duration_since(start).as_millis() as f64;
-                for i in 0..w * h {
+                for i in 0..frame_buffer.len() / 4 {
                     x += 1.0;
-                    if x >= fw {
+                    if x >= w {
                         x = 0.0;
                         y += 1.0;
                     }

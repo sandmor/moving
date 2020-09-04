@@ -1,51 +1,56 @@
-use raw_window_handle::RawWindowHandle;
+mod xcb;
 
-mod xlib;
-
-use xlib::*;
+use xcb::*;
+use crate::error::{ConnectError, OSError};
+use crate::window::*;
+use crate::{event_loop::ControlFlow, event::*};
 
 #[derive(Debug)]
-pub enum Handle {
-    Xlib(XlibHandle),
+pub enum Connection {
+    Xcb(XcbHandle),
 }
 
-pub fn handle(handle: RawWindowHandle) -> Handle {
-    match handle {
-        RawWindowHandle::Xlib(raw) => Handle::Xlib(XlibHandle::new(raw)),
-        w @ _ => unimplemented!("{:?}", w),
+impl Connection {
+    pub fn new() -> Result<Connection, ConnectError> {
+        let handle = match XcbHandle::connect() {
+            Ok(h) => h,
+            Err(e) => {
+                use x11rb::errors::ConnectError as XConnectError;
+                return Err(match e {
+                    XConnectError::UnknownError => ConnectError::UnknownError,
+                    XConnectError::ParseError => ConnectError::ParseError,
+                    XConnectError::InsufficientMemory => ConnectError::InsufficientMemory,
+                    XConnectError::DisplayParsingError => ConnectError::UnknownError,
+                    XConnectError::InvalidScreen => ConnectError::UnknownError,
+                    XConnectError::IOError(e) => ConnectError::IO(e),
+                    XConnectError::ZeroIDMask => ConnectError::UnknownError,
+                    XConnectError::SetupAuthenticate(_) => ConnectError::Authenticate,
+                    XConnectError::SetupFailed(_) => ConnectError::UnknownError,
+                });
+            }
+        };
+        Ok(Connection::Xcb(handle))
+    }
+
+    pub fn create_window(&self, builder: WindowBuilder) -> Result<Window, OSError> {
+        match self {
+            Connection::Xcb(handle) => {
+                handle.create_window(builder)
+            }
+        }
+    }
+
+    pub fn run<H>(&self, event_handler: H)
+    where
+        H: 'static + FnMut(Event, &mut ControlFlow),
+    {
+        match self {
+            Connection::Xcb(handle) => {
+                handle.run(event_handler)
+            }
+        }
     }
 }
 
-impl Handle {
-    pub fn frame_buffer(&mut self) -> &mut [u8] {
-        match self {
-            Handle::Xlib(xlib) => {
-                xlib.frame_buffer()
-            }
-        }
-    }
-
-    pub fn redraw(&mut self) {
-        match self {
-            Handle::Xlib(xlib) => {
-                xlib.redraw()
-            }
-        }
-    }
-
-    pub fn width(&self) -> u32 {
-        match self {
-            Handle::Xlib(xlib) => {
-                xlib.width()
-            }
-        }
-    }
-
-    pub fn height(&self) -> u32 {
-        match self {
-            Handle::Xlib(xlib) => {
-                xlib.height()
-            }
-        }
-    }
-}
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct WindowId(u32);

@@ -2,26 +2,19 @@ use parking_lot::RwLock;
 use crate::{error::OSError, event_loop::EventLoop};
 use crate::{Size, platform::WindowId};
 use std::sync::Arc;
-use bitflags::bitflags;
-
-bitflags! {
-    pub(crate) struct WindowToDo: u8 {
-        const REDRAW = 1 << 0;
-    }
-}
 
 #[derive(Debug)]
 pub(crate) struct WindowInner {
     pub size: Size,
     pub frame_buffer_ptr: *mut u8,
     pub frame_buffer_len: usize,
-    pub todo: WindowToDo
 }
 
 #[derive(Debug)]
 pub struct Window {
     pub(crate) id: WindowId,
     pub(crate) inner: Arc<RwLock<WindowInner>>,
+    pub(crate) platform: Arc<RwLock<crate::platform::WindowPlatform>>
 }
 
 impl Window {
@@ -42,8 +35,8 @@ impl Window {
         unsafe { std::slice::from_raw_parts_mut(inner.frame_buffer_ptr, inner.frame_buffer_len) }
     }
 
-    pub fn redraw(&mut self) {
-        self.inner.write().todo.insert(WindowToDo::REDRAW);
+    pub fn redraw(&self) {
+        crate::platform::redraw_window(&self);
     }
 }
 

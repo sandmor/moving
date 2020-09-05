@@ -1,6 +1,6 @@
 mod xcb;
 
-use xcb::*;
+use xcb::XcbHandle;
 use crate::error::{ConnectError, OSError};
 use crate::window::*;
 use crate::{event_loop::ControlFlow, event::*};
@@ -54,3 +54,16 @@ impl Connection {
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct WindowId(u32);
+
+pub fn redraw_window(window: &Window) {
+    match *window.platform.read() {
+        WindowPlatform::Xcb(ref x) => {
+            xcb::redraw_window(window.id, x);
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) enum WindowPlatform {
+    Xcb(xcb::WindowPlatform)
+}

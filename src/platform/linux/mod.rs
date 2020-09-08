@@ -1,7 +1,7 @@
 mod xcb;
 
 use crate::error::OSError;
-use crate::{event::Event, window::*};
+use crate::{clipboard::ClipboardDataKind, event::Event, window::*};
 
 pub fn poll_event() -> Result<Option<Event>, OSError> {
     xcb::poll_event()
@@ -14,14 +14,18 @@ impl WindowId {
     pub fn from_x11(id: u32) -> WindowId {
         WindowId(id)
     }
+
+    pub fn to_x11(self) -> Option<u32> {
+        Some(self.0)
+    }
 }
 
 #[derive(Debug)]
 pub enum WindowPlatform {
-    Xcb(xcb::WindowPlatform)
+    Xcb(xcb::WindowPlatform),
 }
 
-pub fn create_window(builder: WindowBuilder) -> Result<Window, OSError>  {
+pub fn create_window(builder: WindowBuilder) -> Result<Window, OSError> {
     xcb::create_window(builder)
 }
 
@@ -33,10 +37,15 @@ pub fn redraw_window(window: &Window) {
     }
 }
 
-pub fn destroy_window(window_platform: &mut WindowPlatform) -> Result<(), OSError> {
+pub fn destroy_window(
+    win_id: WindowId,
+    window_platform: &mut WindowPlatform,
+) -> Result<(), OSError> {
     match window_platform {
-        WindowPlatform::Xcb(ref mut x) => {
-            xcb::destroy_window(x)
-        }
+        WindowPlatform::Xcb(ref mut x) => xcb::destroy_window(win_id, x),
     }
+}
+
+pub fn load_from_clipboard(kind: ClipboardDataKind) -> Result<Option<Vec<u8>>, OSError> {
+    xcb::load_from_clipboard(kind)
 }

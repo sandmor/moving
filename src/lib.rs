@@ -1,9 +1,10 @@
 mod platform;
 
-pub mod window;
+pub mod clipboard;
+pub mod error;
 pub mod event;
 pub mod event_loop;
-pub mod error;
+pub mod window;
 
 pub type Rect = euclid::Rect<f64, ()>;
 pub type Point = euclid::Point2D<f64, ()>;

@@ -1,3 +1,10 @@
+use super::XCB;
+use crate::{
+    error::OSError,
+    platform::WindowId,
+    window::{Window as MWindow, WindowBuilder, WindowInner},
+    Size,
+};
 use libc::{mmap, munmap, MAP_ANON, MAP_FAILED, MAP_PRIVATE, MAP_SHARED, PROT_READ, PROT_WRITE};
 use parking_lot::RwLock;
 use std::{os::unix::io::AsRawFd, ptr::null_mut, sync::Arc};
@@ -10,14 +17,10 @@ use x11rb::{
     wrapper::ConnectionExt as WrapperConnectionExt,
     COPY_DEPTH_FROM_PARENT,
 };
-use crate::{error::OSError, window::{Window as MWindow, WindowBuilder, WindowInner}, platform::WindowId, Size};
-use super::XCB;
 
 #[derive(Debug)]
 enum WindowBufferKind {
-    Native {
-        screen_depth: u8,
-    },
+    Native { screen_depth: u8 },
     Shm(shm::Seg),
 }
 
@@ -31,7 +34,6 @@ pub struct WindowPlatform {
     height: u16,
     inner: Arc<RwLock<WindowInner>>,
 }
-
 
 pub fn create_window(builder: WindowBuilder) -> Result<MWindow, OSError> {
     let screen = &XCB.conn.setup().roots[XCB.screen_num];
@@ -87,7 +89,8 @@ pub fn create_window(builder: WindowBuilder) -> Result<MWindow, OSError> {
     if XCB.shm {
         let segment_size = (width as u32) * (height as u32) * 4;
         let shmseg = XCB.conn.generate_id()?;
-        let reply = XCB.conn
+        let reply = XCB
+            .conn
             .shm_create_segment(shmseg, segment_size, false)?
             .reply()?;
         let shm::CreateSegmentReply { shm_fd, .. } = reply;
@@ -115,14 +118,16 @@ pub fn create_window(builder: WindowBuilder) -> Result<MWindow, OSError> {
         buffer_kind = WindowBufferKind::Shm(shmseg);
 
         if let Err(e) =
-            XCB.conn.shm_create_pixmap(pixmap, win_id, width, height, screen.root_depth, shmseg, 0)
+            XCB.conn
+                .shm_create_pixmap(pixmap, win_id, width, height, screen.root_depth, shmseg, 0)
         {
             let _ = XCB.conn.shm_detach(shmseg);
             return Err(e.into());
         }
     } else {
         frame_buffer_len = (width as usize) * (height as usize) * 4;
-        XCB.conn.create_pixmap(screen.root_depth, pixmap, win_id, width, height)?;
+        XCB.conn
+            .create_pixmap(screen.root_depth, pixmap, win_id, width, height)?;
         let addr = unsafe {
             mmap(
                 null_mut(),
@@ -153,15 +158,17 @@ pub fn create_window(builder: WindowBuilder) -> Result<MWindow, OSError> {
         frame_buffer_len,
     }));
 
-    let window = Arc::new(RwLock::new(crate::platform::WindowPlatform::Xcb(WindowPlatform {
-        buffer,
-        buffer_kind,
-        pixmap,
-        gcontext,
-        width,
-        height,
-        inner: inner.clone(),
-    })));
+    let window = Arc::new(RwLock::new(crate::platform::WindowPlatform::Xcb(
+        WindowPlatform {
+            buffer,
+            buffer_kind,
+            pixmap,
+            gcontext,
+            width,
+            height,
+            inner: inner.clone(),
+        },
+    )));
 
     XCB.conn.flush()?;
 
@@ -172,7 +179,7 @@ pub fn create_window(builder: WindowBuilder) -> Result<MWindow, OSError> {
     })
 }
 
-pub fn destroy_window(win: &mut WindowPlatform) -> Result<(), OSError> {
+pub fn destroy_window(win_id: WindowId, win: &mut WindowPlatform) -> Result<(), OSError> {
     match win.buffer_kind {
         WindowBufferKind::Native { .. } => {}
         WindowBufferKind::Shm(shmseg) => {
@@ -183,56 +190,58 @@ pub fn destroy_window(win: &mut WindowPlatform) -> Result<(), OSError> {
         munmap(win.buffer.as_mut_ptr() as *mut _, win.buffer.len());
     }
     XCB.conn.free_pixmap(win.pixmap)?;
+    XCB.conn.destroy_window(win_id.to_x11().unwrap()).unwrap();
     Ok(())
 }
 
 pub fn redraw_window(id: WindowId, platform: &WindowPlatform) {
     match platform.buffer_kind {
-        WindowBufferKind::Native {
-            screen_depth,
-        } => {
-            XCB.conn.put_image(
-                xproto::ImageFormat::ZPixmap,
-                platform.pixmap,
-                //screen_gcontext,
-                platform.gcontext,
-                platform.width,
-                platform.height,
-                0,
-                0,
-                0,
-                screen_depth,
-                platform.buffer,
-            )
-            .unwrap();
+        WindowBufferKind::Native { screen_depth } => {
+            XCB.conn
+                .put_image(
+                    xproto::ImageFormat::ZPixmap,
+                    platform.pixmap,
+                    //screen_gcontext,
+                    platform.gcontext,
+                    platform.width,
+                    platform.height,
+                    0,
+                    0,
+                    0,
+                    screen_depth,
+                    platform.buffer,
+                )
+                .unwrap();
 
-            XCB.conn.copy_area(
-                platform.pixmap,
-                id.0,
-                //screen_gcontext,
-                platform.gcontext,
-                0,
-                0,
-                0,
-                0,
-                platform.width,
-                platform.height,
-            )
-            .unwrap();
+            XCB.conn
+                .copy_area(
+                    platform.pixmap,
+                    id.0,
+                    //screen_gcontext,
+                    platform.gcontext,
+                    0,
+                    0,
+                    0,
+                    0,
+                    platform.width,
+                    platform.height,
+                )
+                .unwrap();
         }
         WindowBufferKind::Shm(_) => {
-            XCB.conn.copy_area(
-                platform.pixmap,
-                id.0,
-                platform.gcontext,
-                0,
-                0,
-                0,
-                0,
-                platform.width,
-                platform.height,
-            )
-            .unwrap();
+            XCB.conn
+                .copy_area(
+                    platform.pixmap,
+                    id.0,
+                    platform.gcontext,
+                    0,
+                    0,
+                    0,
+                    0,
+                    platform.width,
+                    platform.height,
+                )
+                .unwrap();
         }
     }
     XCB.conn.flush().unwrap();

@@ -1,6 +1,6 @@
-use parking_lot::RwLock;
 use crate::{error::OSError, event_loop::EventLoop};
-use crate::{Size, platform::WindowId};
+use crate::{platform::WindowId, Size};
+use parking_lot::RwLock;
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -14,7 +14,7 @@ pub(crate) struct WindowInner {
 pub struct Window {
     pub(crate) id: WindowId,
     pub(crate) inner: Arc<RwLock<WindowInner>>,
-    pub(crate) platform: Arc<RwLock<crate::platform::WindowPlatform>>
+    pub(crate) platform: Arc<RwLock<crate::platform::WindowPlatform>>,
 }
 
 impl Window {
@@ -48,7 +48,10 @@ pub struct WindowBuilder {
 
 impl WindowBuilder {
     pub fn new() -> WindowBuilder {
-        WindowBuilder { width: 800.0, height: 600.0 }
+        WindowBuilder {
+            width: 800.0,
+            height: 600.0,
+        }
     }
 
     pub fn with_width(&mut self, width: f64) -> Self {

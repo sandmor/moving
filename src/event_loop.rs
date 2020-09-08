@@ -2,8 +2,8 @@ use crate::error::OSError;
 use crate::event::*;
 use crate::platform::*;
 use crate::window::*;
-use std::{sync::Arc, collections::BTreeMap, cell::RefCell, thread};
 use parking_lot::RwLock;
+use std::{cell::RefCell, collections::BTreeMap, sync::Arc, thread};
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum ControlFlow {
@@ -14,18 +14,22 @@ pub enum ControlFlow {
 
 #[derive(Debug)]
 pub struct EventLoop {
-    windows: RefCell<BTreeMap<WindowId, Arc<RwLock<WindowPlatform>>>>
+    windows: RefCell<BTreeMap<WindowId, Arc<RwLock<WindowPlatform>>>>,
 }
 
 impl EventLoop {
     pub fn new() -> EventLoop {
-        EventLoop { windows: RefCell::new(BTreeMap::new()) }
+        EventLoop {
+            windows: RefCell::new(BTreeMap::new()),
+        }
     }
 
     pub(crate) fn create_window(&self, builder: WindowBuilder) -> Result<Window, OSError> {
         let window = create_window(builder)?;
 
-        self.windows.borrow_mut().insert(window.id, window.platform.clone());
+        self.windows
+            .borrow_mut()
+            .insert(window.id, window.platform.clone());
 
         Ok(window)
     }
@@ -43,7 +47,7 @@ impl EventLoop {
                     match event {
                         WindowEvent::Destroy => {
                             if let Some(platform) = self.windows.borrow_mut().remove(&window) {
-                                destroy_window(&mut platform.write()).unwrap();
+                                destroy_window(window, &mut platform.write()).unwrap();
                             }
                         }
                         _ => {}
@@ -51,8 +55,7 @@ impl EventLoop {
                 }
                 event_handler(event, &mut cf);
                 there_was_an_event_before = true;
-            }
-            else {
+            } else {
                 if let ControlFlow::Poll = cf {
                     event_handler(Event::MainEventsCleared, &mut cf);
                 } else {

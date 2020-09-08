@@ -3,13 +3,12 @@ use moving::{
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
-use std::time::Instant;
+use std::{thread, time::Instant};
 
 fn main() {
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
     let start = Instant::now();
-
     event_loop.run(move |event, control_flow| {
         *control_flow = ControlFlow::Poll;
 
@@ -39,9 +38,12 @@ fn main() {
                     }
                     let rx = x - cx;
                     let ry = y - cy;
-                    frame_buffer[i * 4] =
-                        ((((f64::sqrt(rx * rx + ry * ry) + (f64::atan2(rx, ry) * 40.0 + t)) * 10.0)
-                            % 512.0)-256.0).abs() as u8;
+                    frame_buffer[i * 4] = ((((f64::sqrt(rx * rx + ry * ry)
+                        + (f64::atan2(rx, ry) * 40.0 + t))
+                        * 10.0)
+                        % 512.0)
+                        - 256.0)
+                        .abs() as u8;
                 }
                 window.redraw();
             }

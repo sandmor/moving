@@ -4,7 +4,7 @@ use crate::platform::WindowId;
 pub enum Event {
     WindowEvent {
         window: WindowId,
-        event: WindowEvent
+        event: WindowEvent,
     },
     MainEventsCleared,
 }

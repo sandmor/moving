@@ -1,9 +1,26 @@
-use x11rb::{connection::Connection, protocol::Event as XEvent};
 use super::XCB;
 use crate::{error::OSError, event::*, platform::WindowId};
+use std::sync::atomic::Ordering;
+use x11rb::{connection::Connection, protocol::Event as XEvent, NONE};
 
 pub fn poll_event() -> Result<Option<Event>, OSError> {
-    Ok(XCB.conn.poll_for_event()?.and_then(|x| try_convert_event(x)))
+    let xevent = XCB.conn.poll_for_event()?;
+    if let Some(event) = xevent {
+        match event {
+            XEvent::SelectionNotify(e) => {
+                XCB.clipboard_conversion_performed
+                    .store(e.property != NONE, Ordering::SeqCst);
+                let &(ref lock, ref cvar) = &*XCB.clipboard_receiver_semaphore;
+                let mut lock = lock.lock();
+                *lock = true;
+                cvar.notify_one();
+            }
+            _ => {}
+        }
+        Ok(try_convert_event(event))
+    } else {
+        Ok(None)
+    }
 }
 
 fn try_convert_event(xevent: XEvent) -> Option<Event> {

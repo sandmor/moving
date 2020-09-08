@@ -1,19 +1,22 @@
 // X11 has multiples clipboards and called them "selections"
 
 use super::XCB;
-use crate::{clipboard::ClipboardDataKind, error::OSError};
+use crate::error::OSError;
+use mime::Mime;
 use std::{sync::atomic::Ordering, time::Duration};
 use x11rb::{protocol::xproto::ConnectionExt, CURRENT_TIME, NONE};
 
-pub fn load_from_clipboard(kind: ClipboardDataKind) -> Result<Option<Vec<u8>>, OSError> {
+pub fn load_from_clipboard(media_type: Mime) -> Result<Option<Vec<u8>>, OSError> {
     let selection_owner = XCB.conn.get_selection_owner(XCB.clipboard)?.reply()?.owner;
     if selection_owner == NONE {
         return Ok(None);
     }
     *XCB.clipboard_receiver_semaphore.0.lock() = false;
-    let conv_target = match kind {
-        ClipboardDataKind::Utf8 => XCB.utf8_string,
-    };
+    let conv_target = XCB
+        .conn
+        .intern_atom(false, media_type.essence_str().as_bytes())?
+        .reply()?
+        .atom;
     XCB.conn.convert_selection(
         XCB.hidden_window,
         XCB.clipboard,

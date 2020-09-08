@@ -3,7 +3,7 @@ use moving::{
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
-use std::{thread, time::Instant};
+use std::time::Instant;
 
 fn main() {
     let event_loop = EventLoop::new();

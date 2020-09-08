@@ -1,7 +1,8 @@
 mod xcb;
 
 use crate::error::OSError;
-use crate::{clipboard::ClipboardDataKind, event::Event, window::*};
+use crate::{event::Event, window::*};
+use mime::Mime;
 
 pub fn poll_event() -> Result<Option<Event>, OSError> {
     xcb::poll_event()
@@ -46,6 +47,6 @@ pub fn destroy_window(
     }
 }
 
-pub fn load_from_clipboard(kind: ClipboardDataKind) -> Result<Option<Vec<u8>>, OSError> {
-    xcb::load_from_clipboard(kind)
+pub fn load_from_clipboard(media_type: Mime) -> Result<Option<Vec<u8>>, OSError> {
+    xcb::load_from_clipboard(media_type)
 }

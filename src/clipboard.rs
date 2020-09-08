@@ -1,10 +1,7 @@
 use crate::{error::OSError, platform};
 
-#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub enum ClipboardDataKind {
-    Utf8,
-}
+pub use mime;
 
-pub fn load(kind: ClipboardDataKind) -> Result<Option<Vec<u8>>, OSError> {
-    platform::load_from_clipboard(kind)
+pub fn load(media_type: mime::Mime) -> Result<Option<Vec<u8>>, OSError> {
+    platform::load_from_clipboard(media_type)
 }

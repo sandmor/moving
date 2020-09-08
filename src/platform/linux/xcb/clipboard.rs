@@ -1,9 +1,12 @@
 // X11 has multiples clipboards and called them "selections"
 
-use super::XCB;
+use super::{events::run_event_for_queue, XCB};
 use crate::error::OSError;
 use mime::Mime;
-use std::{sync::atomic::Ordering, time::Duration};
+use std::{
+    thread,
+    time::{Duration, Instant},
+};
 use x11rb::{protocol::xproto::ConnectionExt, CURRENT_TIME, NONE};
 
 pub fn load_from_clipboard(media_type: Mime) -> Result<Option<Vec<u8>>, OSError> {
@@ -11,12 +14,12 @@ pub fn load_from_clipboard(media_type: Mime) -> Result<Option<Vec<u8>>, OSError>
     if selection_owner == NONE {
         return Ok(None);
     }
-    *XCB.clipboard_receiver_semaphore.0.lock() = false;
     let conv_target = XCB
         .conn
         .intern_atom(false, media_type.essence_str().as_bytes())?
         .reply()?
         .atom;
+    *XCB.clipboard_receiver_semaphore.lock() = None;
     XCB.conn.convert_selection(
         XCB.hidden_window,
         XCB.clipboard,
@@ -24,11 +27,20 @@ pub fn load_from_clipboard(media_type: Mime) -> Result<Option<Vec<u8>>, OSError>
         XCB.clipboard_receiver,
         CURRENT_TIME,
     )?;
-    let &(ref lock, ref cvar) = &*XCB.clipboard_receiver_semaphore;
-    let mut lock = lock.lock();
-    cvar.wait_for(&mut lock, Duration::from_millis(1000000));
-    if !XCB.clipboard_conversion_performed.load(Ordering::SeqCst) {
-        return Ok(None); // Conversion could not be performed
+    let start = Instant::now();
+    while Instant::now() < start + Duration::from_millis(10) {
+        run_event_for_queue()?;
+        if XCB.clipboard_receiver_semaphore.lock().is_some() {
+            break;
+        }
+        thread::yield_now();
+    }
+    if let Some(conversion_performed) = XCB.clipboard_receiver_semaphore.lock().take() {
+        if !conversion_performed {
+            return Ok(None); // Conversion could not be performed
+        }
+    } else {
+        return Ok(None); // The selection owner does not give us its data
     }
     let prop = XCB
         .conn

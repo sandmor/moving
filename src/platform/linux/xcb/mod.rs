@@ -1,6 +1,7 @@
+use crate::event::Event;
 use lazy_static::lazy_static;
-use parking_lot::{Condvar, Mutex};
-use std::sync::{atomic::AtomicBool, Arc};
+use parking_lot::Mutex;
+use std::{collections::VecDeque, sync::Arc};
 use x11rb::{
     connection::Connection,
     protocol::{
@@ -23,8 +24,8 @@ struct XcbInfo {
     hidden_window: u32,
     incr: u32,
     clipboard_receiver: u32,
-    clipboard_receiver_semaphore: Arc<(Mutex<bool>, Condvar)>,
-    clipboard_conversion_performed: AtomicBool,
+    clipboard_receiver_semaphore: Arc<Mutex<Option<bool>>>,
+    events_queue: Mutex<VecDeque<Event>>,
 }
 
 lazy_static! {
@@ -100,8 +101,8 @@ lazy_static! {
             hidden_window: win_id,
             incr,
             clipboard_receiver,
-            clipboard_receiver_semaphore: Arc::new((Mutex::new(false), Condvar::new())),
-            clipboard_conversion_performed: AtomicBool::new(false),
+            clipboard_receiver_semaphore: Arc::new(Mutex::new(None)),
+            events_queue: Mutex::new(VecDeque::new()),
         }
     };
 }

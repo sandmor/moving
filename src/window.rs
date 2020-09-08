@@ -40,7 +40,7 @@ impl Window {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq)]
 pub struct WindowBuilder {
     pub(crate) width: f64,
     pub(crate) height: f64,
@@ -49,6 +49,22 @@ pub struct WindowBuilder {
 impl WindowBuilder {
     pub fn new() -> WindowBuilder {
         WindowBuilder { width: 800.0, height: 600.0 }
+    }
+
+    pub fn with_width(&mut self, width: f64) -> Self {
+        self.width = width;
+        *self
+    }
+
+    pub fn with_height(&mut self, height: f64) -> Self {
+        self.height = height;
+        *self
+    }
+
+    pub fn with_size(&mut self, width: f64, height: f64) -> Self {
+        self.width = width;
+        self.height = height;
+        *self
     }
 
     pub fn build(self, el: &EventLoop) -> Result<Window, OSError> {

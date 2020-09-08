@@ -6,8 +6,8 @@ use moving::{
 use std::time::Instant;
 
 fn main() {
-    let event_loop = EventLoop::new().unwrap();
-    let mut window = WindowBuilder::new().build(&event_loop).unwrap();
+    let event_loop = EventLoop::new();
+    let window = WindowBuilder::new().build(&event_loop).unwrap();
     let start = Instant::now();
 
     event_loop.run(move |event, control_flow| {

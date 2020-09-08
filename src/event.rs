@@ -1,5 +1,4 @@
 use crate::platform::WindowId;
-use crate::Rect;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Event {

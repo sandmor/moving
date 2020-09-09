@@ -80,6 +80,8 @@ pub fn load_from_clipboard(media_type: Mime) -> Result<Option<Vec<u8>>, OSError>
                 }
                 run_event_for_queue()?;
                 if XCB.clipboard_data_chunk_received.load(Ordering::SeqCst) {
+                    XCB.clipboard_data_chunk_received
+                        .store(false, Ordering::SeqCst);
                     break;
                 }
                 thread::yield_now();

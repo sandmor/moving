@@ -1,6 +1,14 @@
 use super::XCB;
 use crate::{error::OSError, event::*, platform::WindowId};
-use x11rb::{connection::Connection, protocol::Event as XEvent, NONE};
+use std::sync::atomic::Ordering;
+use x11rb::{
+    connection::Connection,
+    protocol::{
+        xproto::{ConnectionExt, PropMode},
+        Event as XEvent,
+    },
+    NONE,
+};
 
 pub fn poll_event() -> Result<Option<Event>, OSError> {
     if let Some(event) = XCB.events_queue.lock().pop_back() {
@@ -32,6 +40,43 @@ fn manage_event(event: XEvent) -> Option<Event> {
             XCB.clipboard_receiver_semaphore
                 .lock()
                 .replace(e.property != NONE);
+            None
+        }
+        XEvent::SelectionClear(_) => {
+            *XCB.clipboard_data.lock() = None;
+            None
+        }
+        XEvent::SelectionRequest(e) => {
+            if let Some((ref mime, ref data)) = &*XCB.clipboard_data.lock() {
+                let atom_name = XCB
+                    .conn
+                    .intern_atom(false, mime.essence_str().as_bytes())
+                    .unwrap()
+                    .reply()
+                    .unwrap()
+                    .atom;
+                let valid = e.target == atom_name;
+                if valid {
+                    XCB.conn
+                        .change_property(
+                            PropMode::Replace,
+                            e.requestor,
+                            e.property,
+                            atom_name,
+                            8,
+                            data.len() as u32,
+                            &data,
+                        )
+                        .unwrap();
+                }
+            }
+            None
+        }
+        XEvent::PropertyNotify(e)
+            if e.window == XCB.hidden_window && e.atom == XCB.clipboard_receiver =>
+        {
+            XCB.clipboard_data_chunk_received
+                .store(true, Ordering::SeqCst);
             None
         }
         _ => try_convert_event(event),

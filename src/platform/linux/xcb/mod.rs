@@ -1,7 +1,11 @@
 use crate::event::Event;
 use lazy_static::lazy_static;
+use mime::Mime;
 use parking_lot::Mutex;
-use std::{collections::VecDeque, sync::Arc};
+use std::{
+    collections::VecDeque,
+    sync::{atomic::AtomicBool, Arc},
+};
 use x11rb::{
     connection::Connection,
     protocol::{
@@ -26,6 +30,8 @@ struct XcbInfo {
     clipboard_receiver: u32,
     clipboard_receiver_semaphore: Arc<Mutex<Option<bool>>>,
     events_queue: Mutex<VecDeque<Event>>,
+    clipboard_data: Mutex<Option<(Mime, Vec<u8>)>>,
+    clipboard_data_chunk_received: AtomicBool,
 }
 
 lazy_static! {
@@ -80,7 +86,7 @@ lazy_static! {
             0,
             xproto::WindowClass::InputOutput,
             0,
-            &xproto::CreateWindowAux::new(),
+            &xproto::CreateWindowAux::new().event_mask(xproto::EventMask::PropertyChange),
         )
         .unwrap();
 
@@ -103,6 +109,8 @@ lazy_static! {
             clipboard_receiver,
             clipboard_receiver_semaphore: Arc::new(Mutex::new(None)),
             events_queue: Mutex::new(VecDeque::new()),
+            clipboard_data: Mutex::new(None),
+            clipboard_data_chunk_received: AtomicBool::new(false),
         }
     };
 }

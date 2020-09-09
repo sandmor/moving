@@ -50,3 +50,7 @@ pub fn destroy_window(
 pub fn load_from_clipboard(media_type: Mime) -> Result<Option<Vec<u8>>, OSError> {
     xcb::load_from_clipboard(media_type)
 }
+
+pub fn store_on_clipboard(media_type: mime::Mime, data: &[u8]) -> Result<(), OSError> {
+    xcb::store_on_clipboard(media_type, data)
+}

@@ -60,10 +60,18 @@ fn manage_event(event: XEvent) -> Option<Event> {
                         .atom;
                     targets.extend_from_slice(&mime_atom.to_ne_bytes());
                     if mime.type_() == mime::TEXT && mime.subtype() == mime::PLAIN {
-                        targets.extend_from_slice(&XCB.atoms.UTF8_STRING.to_ne_bytes());
-                        targets.extend_from_slice(&XCB.atoms.MIME_TEXT_PLAIN_UTF8.to_ne_bytes());
-                        targets.extend_from_slice(&XCB.atoms.TEXT.to_ne_bytes());
-                        targets.extend_from_slice(&XCB.atoms.STRING.to_ne_bytes());
+                        let mut utf8 = true;
+                        if let Some(n) = mime.get_param("charset") {
+                            if n.as_str() != "utf-8" {
+                                utf8 = false;
+                            }
+                        }
+                        if utf8 {
+                            targets.extend_from_slice(&XCB.atoms.UTF8_STRING.to_ne_bytes());
+                            targets.extend_from_slice(&XCB.atoms.MIME_TEXT_PLAIN_UTF8.to_ne_bytes());
+                            targets.extend_from_slice(&XCB.atoms.STRING.to_ne_bytes());
+                            targets.extend_from_slice(&XCB.atoms.TEXT.to_ne_bytes());
+                        }
                     }
                 }
                 let se = SelectionNotifyEvent {
@@ -80,7 +88,7 @@ fn manage_event(event: XEvent) -> Option<Event> {
                         PropMode::Replace,
                         e.requestor,
                         e.property,
-                        e.target,
+                        4u32,
                         32,
                         (targets.len() / 4) as u32,
                         &targets,
@@ -104,10 +112,6 @@ fn manage_event(event: XEvent) -> Option<Event> {
                         break;
                     }
                     if mime.type_() == mime::TEXT && mime.subtype() == mime::PLAIN {
-                        if e.target == XCB.atoms.MIME_TEXT_PLAIN_UTF8 {
-                            result = Some(data.clone());
-                            break;
-                        }
                         let mut utf8 = true;
                         if let Some(n) = mime.get_param("charset") {
                             if n.as_str() != "utf-8" {
@@ -115,7 +119,11 @@ fn manage_event(event: XEvent) -> Option<Event> {
                             }
                         }
                         if utf8 {
-                            if e.target == XCB.atoms.UTF8_STRING {
+                            if e.target == XCB.atoms.MIME_TEXT_PLAIN_UTF8 {
+                                result = Some(data.clone());
+                                break;
+                            }
+                            else if e.target == XCB.atoms.UTF8_STRING {
                                 result = Some(data.clone());
                                 break;
                             }

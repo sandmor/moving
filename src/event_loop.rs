@@ -38,7 +38,7 @@ impl EventLoop {
     where
         H: 'static + FnMut(Event, &mut ControlFlow),
     {
-        let mut cf = ControlFlow::Wait;
+        let mut cf = ControlFlow::Poll;
         let mut there_was_an_event_before = false;
         while cf != ControlFlow::Exit {
             let event = poll_event().unwrap();

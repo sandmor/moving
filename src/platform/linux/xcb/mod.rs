@@ -7,13 +7,14 @@ use std::{
     sync::{atomic::AtomicBool, Arc},
 };
 use x11rb::{
+    atom_manager,
     connection::Connection,
     protocol::{
         shm::ConnectionExt as ShmConnectionExt,
         xproto::{self, ConnectionExt},
     },
     xcb_ffi::XCBConnection,
-    COPY_DEPTH_FROM_PARENT, atom_manager,
+    COPY_DEPTH_FROM_PARENT,
 };
 
 atom_manager! {
@@ -30,6 +31,7 @@ atom_manager! {
         MIME_TEXT_PLAIN_UTF8: b"text/plain;charset=utf-8",
         INCR,
         CLIPBOARD_RECEIVER,
+        NULL,
     }
 }
 

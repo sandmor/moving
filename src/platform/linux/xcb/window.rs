@@ -66,9 +66,9 @@ pub fn create_window(builder: WindowBuilder) -> Result<MWindow, OSError> {
     XCB.conn.change_property32(
         xproto::PropMode::Replace,
         win_id,
-        XCB.wm_protocols,
+        XCB.atoms.WM_PROTOCOLS,
         xproto::AtomEnum::ATOM,
-        &[XCB.wm_delete_window],
+        &[XCB.atoms.WM_DELETE_WINDOW],
     )?;
 
     let gc_aux = xproto::CreateGCAux::new().graphics_exposures(0);

@@ -3,7 +3,7 @@ use lazy_static::lazy_static;
 use mime::Mime;
 use parking_lot::Mutex;
 use std::{
-    collections::VecDeque,
+    collections::{BTreeMap, VecDeque},
     sync::{atomic::AtomicBool, Arc},
 };
 use x11rb::{
@@ -13,60 +13,43 @@ use x11rb::{
         xproto::{self, ConnectionExt},
     },
     xcb_ffi::XCBConnection,
-    COPY_DEPTH_FROM_PARENT,
+    COPY_DEPTH_FROM_PARENT, atom_manager,
 };
+
+atom_manager! {
+    pub AtomCollection: AtomCollectionCookie {
+        WM_PROTOCOLS,
+        WM_DELETE_WINDOW,
+        CLIPBOARD,
+        TARGETS,
+        MULTIPLE,
+        TIMESTAMP,
+        UTF8_STRING,
+        TEXT,
+        STRING,
+        MIME_TEXT_PLAIN_UTF8: b"text/plain;charset=utf-8",
+        INCR,
+        CLIPBOARD_RECEIVER,
+    }
+}
 
 #[derive(Debug)]
 struct XcbInfo {
     conn: XCBConnection,
     screen_num: usize,
     shm: bool, // Is shared memory buffers supported?
-    wm_protocols: u32,
-    wm_delete_window: u32,
-    clipboard: u32,
-    utf8_string: u32,
+    atoms: AtomCollection,
     hidden_window: u32,
-    incr: u32,
-    clipboard_receiver: u32,
     clipboard_receiver_semaphore: Arc<Mutex<Option<bool>>>,
     events_queue: Mutex<VecDeque<Event>>,
-    clipboard_data: Mutex<Option<(Mime, Vec<u8>)>>,
+    clipboard_data: Mutex<BTreeMap<Mime, Vec<u8>>>,
     clipboard_data_chunk_received: AtomicBool,
 }
 
 lazy_static! {
     static ref XCB: XcbInfo = {
         let (conn, screen_num) = XCBConnection::connect(None).unwrap();
-        let wm_protocols = conn
-            .intern_atom(false, b"WM_PROTOCOLS")
-            .unwrap()
-            .reply()
-            .unwrap()
-            .atom;
-        let wm_delete_window = conn
-            .intern_atom(false, b"WM_DELETE_WINDOW")
-            .unwrap()
-            .reply()
-            .unwrap()
-            .atom;
-        let clipboard = conn
-            .intern_atom(false, b"CLIPBOARD")
-            .unwrap()
-            .reply()
-            .unwrap()
-            .atom;
-        let utf8_string = conn
-            .intern_atom(false, b"UTF8_STRING")
-            .unwrap()
-            .reply()
-            .unwrap()
-            .atom;
-        let incr = conn
-            .intern_atom(false, b"INCR")
-            .unwrap()
-            .reply()
-            .unwrap()
-            .atom;
+        let atoms = AtomCollection::new(&conn).unwrap();
         let shm = conn
             .shm_query_version()
             .ok()
@@ -89,27 +72,16 @@ lazy_static! {
             &xproto::CreateWindowAux::new().event_mask(xproto::EventMask::PropertyChange),
         )
         .unwrap();
-
-        let clipboard_receiver = conn
-            .intern_atom(false, b"CLIPBOARD_RECEIVER")
-            .unwrap()
-            .reply()
-            .unwrap()
-            .atom;
+        let atoms = atoms.reply().unwrap();
         XcbInfo {
             conn,
             screen_num,
-            wm_protocols,
-            wm_delete_window,
-            clipboard,
-            utf8_string,
             shm,
+            atoms,
             hidden_window: win_id,
-            incr,
-            clipboard_receiver,
             clipboard_receiver_semaphore: Arc::new(Mutex::new(None)),
             events_queue: Mutex::new(VecDeque::new()),
-            clipboard_data: Mutex::new(None),
+            clipboard_data: Mutex::new(BTreeMap::new()),
             clipboard_data_chunk_received: AtomicBool::new(false),
         }
     };

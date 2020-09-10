@@ -6,12 +6,12 @@ use mime::Mime;
 use std::{
     sync::atomic::Ordering,
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant}
 };
 use x11rb::{protocol::xproto::ConnectionExt, CURRENT_TIME, NONE};
 
 pub fn load_from_clipboard(media_type: Mime) -> Result<Option<Vec<u8>>, OSError> {
-    let selection_owner = XCB.conn.get_selection_owner(XCB.clipboard)?.reply()?.owner;
+    let selection_owner = XCB.conn.get_selection_owner(XCB.atoms.CLIPBOARD)?.reply()?.owner;
     if selection_owner == NONE {
         return Ok(None);
     }
@@ -23,13 +23,13 @@ pub fn load_from_clipboard(media_type: Mime) -> Result<Option<Vec<u8>>, OSError>
     *XCB.clipboard_receiver_semaphore.lock() = None;
     XCB.conn.convert_selection(
         XCB.hidden_window,
-        XCB.clipboard,
+        XCB.atoms.CLIPBOARD,
         conv_target,
-        XCB.clipboard_receiver,
+        XCB.atoms.CLIPBOARD_RECEIVER,
         CURRENT_TIME,
     )?;
     let start = Instant::now();
-    while Instant::now() < start + Duration::from_millis(2) {
+    while Instant::now() < start + Duration::from_millis(10) {
         run_event_for_queue()?;
         if XCB.clipboard_receiver_semaphore.lock().is_some() {
             break;
@@ -45,16 +45,16 @@ pub fn load_from_clipboard(media_type: Mime) -> Result<Option<Vec<u8>>, OSError>
     }
     let prop = XCB
         .conn
-        .get_property(false, XCB.hidden_window, XCB.clipboard_receiver, 0u32, 0, 0)?
+        .get_property(false, XCB.hidden_window, XCB.atoms.CLIPBOARD_RECEIVER, 0u32, 0, 0)?
         .reply()?;
-    if prop.type_ != XCB.incr {
+    if prop.type_ != XCB.atoms.INCR {
         let prop_length = prop.bytes_after;
         let prop = XCB
             .conn
             .get_property(
                 false,
                 XCB.hidden_window,
-                XCB.clipboard_receiver,
+                XCB.atoms.CLIPBOARD_RECEIVER,
                 0u32,
                 0,
                 prop_length,
@@ -62,20 +62,20 @@ pub fn load_from_clipboard(media_type: Mime) -> Result<Option<Vec<u8>>, OSError>
             .reply()?;
         let result = prop.value;
         XCB.conn
-            .delete_property(XCB.hidden_window, XCB.clipboard_receiver)?;
+            .delete_property(XCB.hidden_window, XCB.atoms.CLIPBOARD_RECEIVER)?;
         Ok(Some(result))
     } else {
         // The data is received incrementally
         // Start the transference process
         XCB.conn
-            .delete_property(XCB.hidden_window, XCB.clipboard_receiver)?;
+            .delete_property(XCB.hidden_window, XCB.atoms.CLIPBOARD_RECEIVER)?;
         let mut data = Vec::new();
         let start = Instant::now();
         XCB.clipboard_data_chunk_received
             .store(false, Ordering::SeqCst);
         loop {
             loop {
-                if Instant::now() < start + Duration::from_millis(1) {
+                if Instant::now() < start + Duration::from_millis(5) {
                     return Ok(None);
                 }
                 run_event_for_queue()?;
@@ -88,7 +88,7 @@ pub fn load_from_clipboard(media_type: Mime) -> Result<Option<Vec<u8>>, OSError>
             }
             let prop = XCB
                 .conn
-                .get_property(false, XCB.hidden_window, XCB.clipboard_receiver, 0u32, 0, 0)?
+                .get_property(false, XCB.hidden_window, XCB.atoms.CLIPBOARD_RECEIVER, 0u32, 0, 0)?
                 .reply()?;
             let prop_length = prop.bytes_after;
             let prop = XCB
@@ -96,7 +96,7 @@ pub fn load_from_clipboard(media_type: Mime) -> Result<Option<Vec<u8>>, OSError>
                 .get_property(
                     true,
                     XCB.hidden_window,
-                    XCB.clipboard_receiver,
+                    XCB.atoms.CLIPBOARD_RECEIVER,
                     0u32,
                     0,
                     prop_length,
@@ -114,8 +114,8 @@ pub fn load_from_clipboard(media_type: Mime) -> Result<Option<Vec<u8>>, OSError>
 pub fn store_on_clipboard(media_type: mime::Mime, data: &[u8]) -> Result<(), OSError> {
     XCB.clipboard_data
         .lock()
-        .replace((media_type, data.to_owned()));
+        .insert(media_type, data.to_owned());
     XCB.conn
-        .set_selection_owner(XCB.hidden_window, XCB.clipboard, CURRENT_TIME)?;
+        .set_selection_owner(XCB.hidden_window, XCB.atoms.CLIPBOARD, CURRENT_TIME)?;
     Ok(())
 }

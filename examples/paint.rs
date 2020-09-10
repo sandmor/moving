@@ -9,6 +9,7 @@ fn main() {
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
     let start = Instant::now();
+    moving::clipboard::store(moving::clipboard::mime::TEXT_PLAIN, b"Something").unwrap();
     event_loop.run(move |event, control_flow| {
         *control_flow = ControlFlow::Poll;
 

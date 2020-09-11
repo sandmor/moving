@@ -126,7 +126,7 @@ fn load_from_clipboard_inner(conv_target: Atom) -> Result<Option<Vec<u8>>, OSErr
     }
 }
 
-pub fn load_from_clipboard(media_type: Mime) -> Result<Option<Vec<u8>>, OSError> {
+pub fn load(media_type: Mime) -> Result<Option<Vec<u8>>, OSError> {
     let selection_owner = XCB
         .conn
         .get_selection_owner(XCB.atoms.CLIPBOARD)?
@@ -161,7 +161,7 @@ pub fn load_from_clipboard(media_type: Mime) -> Result<Option<Vec<u8>>, OSError>
     Ok(None)
 }
 
-pub fn store_on_clipboard(media_type: mime::Mime, data: &[u8]) -> Result<(), OSError> {
+pub fn store(media_type: mime::Mime, data: &[u8]) -> Result<(), OSError> {
     XCB.clipboard_data
         .lock()
         .insert(media_type, data.to_owned());

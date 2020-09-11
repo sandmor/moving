@@ -47,10 +47,14 @@ pub fn destroy_window(
     }
 }
 
-pub fn load_from_clipboard(media_type: Mime) -> Result<Option<Vec<u8>>, OSError> {
-    xcb::load_from_clipboard(media_type)
-}
+pub mod clipboard {
+    use super::*;
 
-pub fn store_on_clipboard(media_type: mime::Mime, data: &[u8]) -> Result<(), OSError> {
-    xcb::store_on_clipboard(media_type, data)
+    pub fn load(media_type: Mime) -> Result<Option<Vec<u8>>, OSError> {
+        xcb::clipboard::load(media_type)
+    }
+
+    pub fn store(media_type: mime::Mime, data: &[u8]) -> Result<(), OSError> {
+        xcb::clipboard::store(media_type, data)
+    }
 }

@@ -95,12 +95,11 @@ impl Drop for XCB {
     }
 }
 
-mod clipboard;
+pub mod clipboard;
 mod errors;
 mod events;
 mod window;
 
-pub use self::clipboard::*;
 pub use self::errors::*;
 pub use self::events::*;
 pub use self::window::*;

@@ -1,3 +1,5 @@
+mod orbclient;
+
 //use orbclient::Window;
 use crate::error::OSError;
 use crate::{event::Event, window::*};
@@ -22,21 +24,19 @@ impl WindowId {
 
 #[derive(Debug)]
 pub enum WindowPlatform {
-    //Xcb(xcb::WindowPlatform),
+    OrbClient(orbclient::WindowPlatform),
 }
 
 pub fn create_window(builder: WindowBuilder) -> Result<Window, OSError> {
-    todo!();
-    //xcb::create_window(builder)
+    orbclient::create_window(builder)
 }
 
 pub fn redraw_window(window: &Window) {
-    todo!();
-    // match *window.platform.read() {
-    //     WindowPlatform::Xcb(ref x) => {
-    //         xcb::redraw_window(window.id, x);
-    //     }
-    // }
+    match *window.platform.read() {
+        WindowPlatform::OrbClient(ref x) => {
+            orbclient::redraw_window(window.id, x);
+        }
+    }
 }
 
 pub fn destroy_window(

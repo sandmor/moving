@@ -1,4 +1,4 @@
-use crate::{error::OSError, event::*, window as mwin, Size};
+use crate::{error::OSError, event::*, window as mwin, Size, platform::WindowId};
 use libc::{mmap, MAP_FAILED, MAP_SHARED, PROT_READ, PROT_WRITE};
 use parking_lot::{Mutex, RwLock};
 use std::{
@@ -11,17 +11,25 @@ use wayland_client::{
     protocol::{
         wl_compositor::WlCompositor,
         wl_shm::{Format, WlShm},
+        wl_shm_pool::WlShmPool,
+        wl_surface::WlSurface,
     },
     Display, EventQueue, GlobalManager, Main,
 };
 use wayland_protocols::xdg_shell::client::xdg_wm_base::XdgWmBase;
 
 #[derive(Debug)]
-pub struct Window {}
+pub struct Window {
+    pool: Main<WlShmPool>,
+    surface: Main<WlSurface>,
+    buf_x: i32,
+    buf_y: i32,
+}
 
 pub struct Connection {
     display: Display,
     event_queue: Mutex<EventQueue>,
+    events_sender: flume::Sender<Event>,
     events_receiver: flume::Receiver<Event>,
     shm: Main<WlShm>,
     compositor: Main<WlCompositor>,
@@ -48,11 +56,21 @@ impl Connection {
         let compositor = globals.instantiate_exact::<WlCompositor>(1).unwrap();
         let xdg_wm_base = globals.instantiate_exact::<XdgWmBase>(1).unwrap();
 
+        xdg_wm_base.quick_assign(|xdg_wm_base, event, _| {
+            use wayland_protocols::xdg_shell::client::xdg_wm_base::Event;
+            // This ping/pong mechanism is used by the wayland server to detect
+            // unresponsive applications
+            if let Event::Ping { serial } = event {
+                xdg_wm_base.pong(serial);
+            }
+        });
+
         let (events_sender, events_receiver) = flume::unbounded();
 
         Ok(Self {
             display,
             event_queue: Mutex::new(event_queue),
+            events_sender,
             events_receiver,
             shm,
             compositor,
@@ -64,27 +82,56 @@ impl Connection {
         &self,
         builder: mwin::WindowBuilder,
     ) -> Result<(u32, Window, Arc<RwLock<mwin::PixelsBox>>), OSError> {
-        let buf_x: u32 = builder.width as u32;
-        let buf_y: u32 = builder.height as u32;
+        let buf_x: i32 = builder.width as i32;
+        let buf_y: i32 = builder.height as i32;
+
+        let surface = self.compositor.create_surface();
+        let xdg_surface = self.xdg_wm_base.get_xdg_surface(&surface);
+        let top_level = xdg_surface.get_toplevel();
+
+        xdg_surface.quick_assign(|xdg_surface, event, _| {
+            use wayland_protocols::xdg_shell::client::xdg_surface::Event;
+            match event {
+                Event::Configure { serial } => {
+                    xdg_surface.ack_configure(serial);
+                },
+                _ => {}
+            }
+        });
+        let top_level_ev_sender = self.events_sender.clone();
+        top_level.quick_assign(move |_, event, _| {
+            use wayland_protocols::xdg_shell::client::xdg_toplevel::Event as WlEvent;
+            let window = WindowId(0);
+            match event {
+                WlEvent::Configure { width, height, states } => {},
+                WlEvent::Close => {
+                    top_level_ev_sender.send(Event::WindowEvent { window, event: WindowEvent::CloseRequested }).unwrap();
+                },
+                _ => {}
+            }
+        });
+        surface.commit();
 
         let mut tmp = tempfile::tempfile().expect("Unable to create a tempfile.");
         tmp.set_len((buf_x * buf_y) as u64 * 4).unwrap();
 
         let pool = self.shm.create_pool(
             tmp.as_raw_fd(),            // RawFd to the tempfile serving as shared memory
-            (buf_x * buf_y * 4) as i32, // size in bytes of the shared memory (4 bytes per pixel)
+            buf_x * buf_y * 4,          // size in bytes of the shared memory (4 bytes per pixel)
         );
         let buffer = pool.create_buffer(
             0,                  // Start of the buffer in the pool
-            buf_x as i32,       // width of the buffer in pixels
-            buf_y as i32,       // height of the buffer in pixels
+            buf_x,              // width of the buffer in pixels
+            buf_y,              // height of the buffer in pixels
             (buf_x * 4) as i32, // number of bytes between the beginning of two consecutive lines
-            Format::Argb8888,   // chosen encoding for the data
+            Format::Xrgb8888,   // chosen encoding for the data
         );
 
-        let surface = self.compositor.create_surface();
-        let xdg_surface = self.xdg_wm_base.get_xdg_surface(&surface);
-        let top_level = xdg_surface.get_toplevel();
+        self.event_queue
+            .lock()
+            .sync_roundtrip(&mut (), |_, _, _| { /* we ignore unfiltered messages */ })
+            .unwrap();
+
         surface.attach(Some(&buffer), 0, 0);
         surface.commit();
 
@@ -115,8 +162,18 @@ impl Connection {
             frame_buffer_len,
         )));
 
-        let window = Window {};
+        let window = Window {
+            pool,
+            surface,
+            buf_x,
+            buf_y,
+        };
         Ok((0, window, pixels_box))
+    }
+
+    pub fn redraw_window(&self, window: &Window) {
+        window.surface.damage(0, 0, window.buf_x, window.buf_y);
+        window.surface.commit();
     }
 
     pub fn poll_event(&self) -> Result<Option<Event>, OSError> {
@@ -125,7 +182,7 @@ impl Connection {
         }
         self.event_queue
             .lock()
-            .dispatch_pending(&mut (), |_, _, _| { /* we ignore unfiltered messages */ })
+            .sync_roundtrip(&mut (), |_, _, _| { /* we ignore unfiltered messages */ })
             .unwrap();
         Ok(self.events_receiver.try_recv().ok())
     }

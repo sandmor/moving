@@ -17,6 +17,13 @@ pub enum WindowPlatformData {
 }
 
 impl WindowPlatformData {
+    fn wayland(&self) -> &wayland::Window {
+        match self {
+            Self::Wayland(ref w) => w,
+            _ => unreachable!(),
+        }
+    }
+
     fn xcb(&self) -> &xcb::Window {
         match self {
             Self::Xcb(ref x) => x,
@@ -81,7 +88,7 @@ impl Connection {
 
     pub fn redraw_window(&self, window: &Window) {
         match self {
-            Self::Wayland(_) => {}
+            Self::Wayland(wl) => wl.redraw_window(window.platform_data.read().wayland()),
             Self::Xcb(xcb) => xcb.redraw_window(window.id.0, window.platform_data.read().xcb()),
         }
     }

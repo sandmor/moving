@@ -1,3 +1,6 @@
+use crate::Size;
+use std::ptr::NonNull;
+
 #[cfg(target_os = "linux")]
 #[path = "linux/mod.rs"]
 mod platform;

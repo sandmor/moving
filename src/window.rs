@@ -1,7 +1,11 @@
-use crate::{error::OSError, event_loop::EventLoop};
-use crate::{platform::WindowId, Size};
+use crate::{
+    error::OSError,
+    event_loop::EventLoop,
+    platform::{WindowId, WindowPlatformData},
+    Size, CONNECTION,
+};
 use parking_lot::RwLock;
-use std::sync::Arc;
+use std::{ptr::NonNull, sync::Arc};
 
 #[derive(Debug)]
 pub(crate) struct WindowInner {
@@ -11,32 +15,59 @@ pub(crate) struct WindowInner {
 }
 
 #[derive(Debug)]
+pub struct PixelsBox {
+    size: Size,
+    frame_buffer_ptr: NonNull<u8>,
+    frame_buffer_len: usize,
+}
+
+impl PixelsBox {
+    pub(crate) fn from_raw(
+        size: Size,
+        frame_buffer_ptr: NonNull<u8>,
+        frame_buffer_len: usize,
+    ) -> Self {
+        Self {
+            size,
+            frame_buffer_ptr,
+            frame_buffer_len,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct Window {
     pub(crate) id: WindowId,
-    pub(crate) inner: Arc<RwLock<WindowInner>>,
-    pub(crate) platform: Arc<RwLock<crate::platform::WindowPlatform>>,
+    pub(crate) pixels_box: Arc<RwLock<PixelsBox>>,
+    // This is used to store platform specifid information
+    pub(crate) platform_data: Arc<RwLock<WindowPlatformData>>,
 }
 
 impl Window {
     pub fn size(&self) -> Size {
-        self.inner.read().size
+        self.pixels_box.read().size
     }
 
     pub fn width(&self) -> f64 {
-        self.inner.read().size.width
+        self.pixels_box.read().size.width
     }
 
     pub fn height(&self) -> f64 {
-        self.inner.read().size.height
+        self.pixels_box.read().size.height
     }
 
     pub fn frame_buffer(&self) -> &mut [u8] {
-        let inner = self.inner.read();
-        unsafe { std::slice::from_raw_parts_mut(inner.frame_buffer_ptr, inner.frame_buffer_len) }
+        let pixels_box = self.pixels_box.read();
+        unsafe {
+            std::slice::from_raw_parts_mut(
+                pixels_box.frame_buffer_ptr.as_ptr(),
+                pixels_box.frame_buffer_len,
+            )
+        }
     }
 
     pub fn redraw(&self) {
-        crate::platform::redraw_window(&self);
+        CONNECTION.redraw_window(&self);
     }
 }
 

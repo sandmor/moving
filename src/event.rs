@@ -12,6 +12,6 @@ pub enum Event {
 #[derive(Debug, Clone, PartialEq)]
 pub enum WindowEvent {
     CloseRequested,
-    Damaged,
+    Dirted,
     Destroy,
 }

@@ -1,13 +1,23 @@
-use crate::{error::OSError, window as mwin, Size, event::*};
-use libc::{MAP_SHARED, MAP_FAILED, mmap, PROT_READ, PROT_WRITE};
-use parking_lot::{RwLock, Mutex};
-use wayland_client::{Display, EventQueue, Main, GlobalManager, protocol::{wl_compositor::WlCompositor, wl_shm::{WlShm, Format}}};
+use crate::{error::OSError, event::*, window as mwin, Size};
+use libc::{mmap, MAP_FAILED, MAP_SHARED, PROT_READ, PROT_WRITE};
+use parking_lot::{Mutex, RwLock};
+use std::{
+    io::Write,
+    os::unix::io::AsRawFd,
+    ptr::{null_mut, NonNull},
+    sync::Arc,
+};
+use wayland_client::{
+    protocol::{
+        wl_compositor::WlCompositor,
+        wl_shm::{Format, WlShm},
+    },
+    Display, EventQueue, GlobalManager, Main,
+};
 use wayland_protocols::xdg_shell::client::xdg_wm_base::XdgWmBase;
-use std::{io::Write, ptr::{null_mut, NonNull}, os::unix::io::AsRawFd, sync::Arc};
 
 #[derive(Debug)]
-pub struct Window {
-}
+pub struct Window {}
 
 pub struct Connection {
     display: Display,
@@ -30,7 +40,9 @@ impl Connection {
         //
         // When this returns it must be true that the server has already
         // sent us all available globals.
-        event_queue.sync_roundtrip(&mut (), |_, _, _| unreachable!()).unwrap();
+        event_queue
+            .sync_roundtrip(&mut (), |_, _, _| unreachable!())
+            .unwrap();
 
         let shm = globals.instantiate_exact::<WlShm>(1).unwrap();
         let compositor = globals.instantiate_exact::<WlCompositor>(1).unwrap();
@@ -38,7 +50,14 @@ impl Connection {
 
         let (events_sender, events_receiver) = flume::unbounded();
 
-        Ok(Self { display, event_queue: Mutex::new(event_queue), events_receiver, shm, compositor, xdg_wm_base })
+        Ok(Self {
+            display,
+            event_queue: Mutex::new(event_queue),
+            events_receiver,
+            shm,
+            compositor,
+            xdg_wm_base,
+        })
     }
 
     pub fn create_window(
@@ -56,11 +75,11 @@ impl Connection {
             (buf_x * buf_y * 4) as i32, // size in bytes of the shared memory (4 bytes per pixel)
         );
         let buffer = pool.create_buffer(
-            0,                        // Start of the buffer in the pool
-            buf_x as i32,             // width of the buffer in pixels
-            buf_y as i32,             // height of the buffer in pixels
-            (buf_x * 4) as i32,       // number of bytes between the beginning of two consecutive lines
-            Format::Argb8888,         // chosen encoding for the data
+            0,                  // Start of the buffer in the pool
+            buf_x as i32,       // width of the buffer in pixels
+            buf_y as i32,       // height of the buffer in pixels
+            (buf_x * 4) as i32, // number of bytes between the beginning of two consecutive lines
+            Format::Argb8888,   // chosen encoding for the data
         );
 
         let surface = self.compositor.create_surface();
@@ -69,7 +88,10 @@ impl Connection {
         surface.attach(Some(&buffer), 0, 0);
         surface.commit();
 
-        self.event_queue.lock().sync_roundtrip(&mut (), |_, _, _| { /* we ignore unfiltered messages */ }).unwrap();
+        self.event_queue
+            .lock()
+            .sync_roundtrip(&mut (), |_, _, _| { /* we ignore unfiltered messages */ })
+            .unwrap();
 
         let frame_buffer_len = (buf_x * buf_y) as usize * 4;
 
@@ -98,10 +120,13 @@ impl Connection {
     }
 
     pub fn poll_event(&self) -> Result<Option<Event>, OSError> {
-        if let Some(event) = self.events_receiver.try_recv().ok() {
+        if let Ok(event) = self.events_receiver.try_recv() {
             return Ok(Some(event));
         }
-        self.event_queue.lock().dispatch_pending(&mut (), |_, _, _| { /* we ignore unfiltered messages */ }).unwrap();
+        self.event_queue
+            .lock()
+            .dispatch_pending(&mut (), |_, _, _| { /* we ignore unfiltered messages */ })
+            .unwrap();
         Ok(self.events_receiver.try_recv().ok())
     }
 }

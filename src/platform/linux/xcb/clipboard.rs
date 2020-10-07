@@ -9,11 +9,11 @@ use std::{
     time::{Duration, Instant},
 };
 use x11rb::{
+    connection::Connection as XConnection,
     protocol::xproto::{
         Atom, ConnectionExt, EventMask, PropMode, SelectionNotifyEvent, SelectionRequestEvent,
         Window, SELECTION_NOTIFY_EVENT,
     },
-    connection::Connection as XConnection,
     CURRENT_TIME, NONE,
 };
 
@@ -128,7 +128,8 @@ impl Connection {
                     }
                     thread::yield_now();
                 }
-                self.clipboard_data_chunk_received.store(false, Ordering::SeqCst);
+                self.clipboard_data_chunk_received
+                    .store(false, Ordering::SeqCst);
                 let prop = self
                     .conn
                     .get_property(
@@ -327,10 +328,9 @@ impl Connection {
                         }
                     }
                     if utf8 {
-                        if target == self.atoms.MIME_TEXT_PLAIN_UTF8 {
-                            result = Some(data.clone());
-                            break;
-                        } else if target == self.atoms.UTF8_STRING {
+                        if target == self.atoms.MIME_TEXT_PLAIN_UTF8
+                            || target == self.atoms.UTF8_STRING
+                        {
                             result = Some(data.clone());
                             break;
                         } else if target == self.atoms.TEXT {

@@ -1,7 +1,11 @@
 use super::Connection;
 use crate::{error::OSError, event::*, platform::WindowId};
 use std::sync::atomic::Ordering;
-use x11rb::{connection::Connection as XConnection, protocol::{Event as XEvent, xproto}, NONE};
+use x11rb::{
+    connection::Connection as XConnection,
+    protocol::{xproto, Event as XEvent},
+    NONE,
+};
 
 impl Connection {
     pub fn poll_event(&self) -> Result<Option<Event>, OSError> {
@@ -33,7 +37,9 @@ impl Connection {
                 None
             }
             XEvent::PropertyNotify(e)
-                if e.window == self.hidden_window && e.atom == self.atoms.CLIPBOARD_RECEIVER && e.state == xproto::Property::NewValue =>
+                if e.window == self.hidden_window
+                    && e.atom == self.atoms.CLIPBOARD_RECEIVER
+                    && e.state == xproto::Property::NewValue =>
             {
                 self.clipboard_data_chunk_received
                     .store(true, Ordering::SeqCst);
@@ -57,7 +63,7 @@ impl Connection {
             }
             XEvent::Expose(e) if e.count == 0 => Event::WindowEvent {
                 window: WindowId(e.window),
-                event: WindowEvent::Damaged,
+                event: WindowEvent::Dirted,
             },
             XEvent::DestroyNotify(e) => Event::WindowEvent {
                 window: WindowId(e.window),

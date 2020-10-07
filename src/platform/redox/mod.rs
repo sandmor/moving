@@ -17,8 +17,7 @@ impl WindowId {
 }
 
 #[derive(Debug)]
-pub struct Connection {
-}
+pub struct Connection {}
 
 impl Connection {
     pub fn new() -> Result<Self, OSError> {

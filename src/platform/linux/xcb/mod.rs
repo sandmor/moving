@@ -10,9 +10,9 @@ use x11rb::{
     atom_manager,
     connection::Connection as XConnection,
     protocol::{
+        render::ConnectionExt as XRenderConnectionExt,
         shm::ConnectionExt as ShmConnectionExt,
         xproto::{self, ConnectionExt},
-        render::ConnectionExt as XRenderConnectionExt,
     },
     xcb_ffi::XCBConnection,
     COPY_DEPTH_FROM_PARENT,
@@ -40,7 +40,7 @@ atom_manager! {
 pub struct Connection {
     conn: XCBConnection,
     screen_num: usize,
-    shm: bool, // Is shared memory buffers supported?
+    shm: bool,     // Is shared memory buffers supported?
     xrender: bool, // Is xrender supported(translucent windows)?
     atoms: AtomCollection,
     hidden_window: u32,

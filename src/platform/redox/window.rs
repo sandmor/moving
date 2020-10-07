@@ -1,8 +1,8 @@
-use std::{fmt, ptr::NonNull, sync::Arc};
 use super::*;
-use crate::{Size, window as mwin};
+use crate::{window as mwin, Size};
 use orbclient::{renderer::Renderer, Window};
 use parking_lot::RwLock;
+use std::{fmt, ptr::NonNull, sync::Arc};
 
 pub struct WindowPlatformData {
     buffer: Vec<u8>,
@@ -17,17 +17,15 @@ impl fmt::Debug for WindowPlatformData {
 }
 
 impl Connection {
-    pub fn create_window(
-        &self,
-        builder: mwin::WindowBuilder,
-    ) -> Result<mwin::Window, OSError> {
+    pub fn create_window(&self, builder: mwin::WindowBuilder) -> Result<mwin::Window, OSError> {
         let orb_window = Window::new(0, 0, builder.width as u32, builder.height as u32, "")
             .ok_or_else(|| OSError::Unknown)?;
 
         let frame_buffer_len = orb_window.data().len();
         let mut buffer = Vec::with_capacity(frame_buffer_len);
 
-        let frame_buffer_ptr: NonNull<u8> = NonNull::new(buffer.as_mut_slice().as_mut_ptr()).unwrap();
+        let frame_buffer_ptr: NonNull<u8> =
+            NonNull::new(buffer.as_mut_slice().as_mut_ptr()).unwrap();
 
         // todo use correct window id
         let id = WindowId::from_orbclient(0);
@@ -46,7 +44,7 @@ impl Connection {
         Ok(mwin::Window {
             id,
             pixels_box,
-            platform_data
+            platform_data,
         })
     }
 

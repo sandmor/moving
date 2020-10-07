@@ -89,7 +89,7 @@ impl Connection {
 
         let frame_buffer_ptr;
         let frame_buffer_len;
-        
+
         if self.shm {
             let segment_size = (width as u32) * (height as u32) * 4;
             let shmseg = self.conn.generate_id()?;

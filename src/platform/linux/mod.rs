@@ -55,7 +55,8 @@ impl Connection {
 
     pub fn create_window(&self, builder: WindowBuilder) -> Result<Window, OSError> {
         match self {
-            Self::Wayland(wl) => wl.create_window(builder)
+            Self::Wayland(wl) => wl
+                .create_window(builder)
                 .map(|(win_id, wl_win, pixels_box)| Window {
                     id: WindowId(win_id),
                     pixels_box,
@@ -80,11 +81,8 @@ impl Connection {
 
     pub fn redraw_window(&self, window: &Window) {
         match self {
-            Self::Wayland(_) => {},
-            Self::Xcb(xcb) => xcb.redraw_window(
-                window.id.0,
-                window.platform_data.read().xcb(),
-            ),
+            Self::Wayland(_) => {}
+            Self::Xcb(xcb) => xcb.redraw_window(window.id.0, window.platform_data.read().xcb()),
         }
     }
 

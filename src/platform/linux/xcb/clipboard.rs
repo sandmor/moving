@@ -77,7 +77,6 @@ impl Connection {
                 return Ok(None); // Conversion could not be performed
             }
         } else {
-            println!("ERROR");
             return Ok(None); // The selection owner does not give us its data
         }
         let prop = self

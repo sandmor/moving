@@ -35,7 +35,6 @@ impl PixelsBox {
     }
 }
 
-#[derive(Debug)]
 pub struct Window {
     pub(crate) id: WindowId,
     pub(crate) pixels_box: Arc<RwLock<PixelsBox>>,

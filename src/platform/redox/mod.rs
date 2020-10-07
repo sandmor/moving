@@ -1,13 +1,7 @@
-mod orbclient;
-
-//use orbclient::Window;
 use crate::error::OSError;
-use crate::{event::Event, window::*};
-use mime::Mime;
-
-pub fn poll_event() -> Result<Option<Event>, OSError> {
-    todo!();
-}
+mod clipboard;
+mod events;
+mod window;
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct WindowId(u32);
@@ -23,40 +17,13 @@ impl WindowId {
 }
 
 #[derive(Debug)]
-pub enum WindowPlatform {
-    OrbClient(orbclient::WindowPlatform),
+pub struct Connection {
 }
 
-pub fn create_window(builder: WindowBuilder) -> Result<Window, OSError> {
-    orbclient::create_window(builder)
-}
-
-pub fn redraw_window(window: &Window) {
-    match *window.platform.read() {
-        WindowPlatform::OrbClient(ref x) => {
-            orbclient::redraw_window(window.id, x);
-        }
+impl Connection {
+    pub fn new() -> Result<Self, OSError> {
+        Ok(Self {})
     }
 }
 
-pub fn destroy_window(
-    win_id: WindowId,
-    window_platform: &mut WindowPlatform,
-) -> Result<(), OSError> {
-    todo!();
-    // match window_platform {
-    //     WindowPlatform::Xcb(ref mut x) => xcb::destroy_window(win_id, x),
-    // }
-}
-
-pub mod clipboard {
-    use super::*;
-
-    pub fn load(media_type: Mime) -> Result<Option<Vec<u8>>, OSError> {
-        todo!();
-    }
-
-    pub fn store(media_type: mime::Mime, data: &[u8]) -> Result<(), OSError> {
-        todo!();
-    }
-}
+pub use self::window::*;

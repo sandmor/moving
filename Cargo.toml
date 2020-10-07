@@ -19,7 +19,7 @@ x11rb = { version = "0.6", features = ["shm", "allow-unsafe-code", "render"] }
 libc = "0.2"
 wayland-client = { version = "0", features = ["dlopen"] }
 wayland-protocols = { version = "0", features = ["client"] }
-tempfile = "*"
+tempfile = "3"
 flume = { version = "0.9", default-features = false }
 
 [target.'cfg(target_os = "redox")'.dependencies]

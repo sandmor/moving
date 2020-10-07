@@ -44,6 +44,7 @@ fn main() {
                         % 512.0)
                         - 256.0)
                         .abs() as u8;
+                    frame_buffer[i * 4 + 3] = 128;
                 }
                 window.redraw();
             }

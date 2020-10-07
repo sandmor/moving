@@ -8,18 +8,20 @@ use std::{
     sync::Arc,
 };
 use x11rb::{
-    connection::Connection as XConnection,
+    connection::{Connection as XConnection, RequestConnection},
     protocol::{
-        shm::{self, ConnectionExt as ShmConnectionExt},
-        xproto::{self, ConnectionExt},
+        shm::{self, ConnectionExt as _},
+        xproto::{self, Visualid, ConnectionExt, ColormapAlloc},
+        render::{self as xrender, ConnectionExt as _, PictType}
     },
-    wrapper::ConnectionExt as WrapperConnectionExt,
+    wrapper::ConnectionExt as _,
+    rust_connection::ReplyError,
     COPY_DEPTH_FROM_PARENT,
 };
 
 #[derive(Debug)]
 pub enum WindowBufferKind {
-    Native { screen_depth: u8 },
+    Native { depth: u8 },
     Shm(shm::Seg),
 }
 
@@ -29,6 +31,7 @@ pub struct Window {
     buffer_kind: WindowBufferKind,
     pixmap: xproto::Pixmap,
     gcontext: xproto::Gcontext,
+    colormap: u32,
     win_id: u32,
     width: u16,
     height: u16,
@@ -40,13 +43,21 @@ impl Connection {
         &self,
         builder: mwin::WindowBuilder,
     ) -> Result<(u32, Window, Arc<RwLock<mwin::PixelsBox>>), OSError> {
+        let (depth, visual_id) = self.choose_visual(self.screen_num)?;
+
         let screen = &self.conn.setup().roots[self.screen_num];
         let win_id = self.conn.generate_id()?;
         let width = builder.width as u16;
         let height = builder.height as u16;
 
+        let colormap = self.conn.generate_id()?;
+        self.conn.create_colormap(ColormapAlloc::None, colormap, screen.root, visual_id)?;
+
         let win_aux = xproto::CreateWindowAux::new()
             .win_gravity(xproto::Gravity::NorthWest)
+            .background_pixel(x11rb::NONE)
+            .border_pixel(screen.black_pixel)
+            .colormap(colormap)
             .event_mask(
                 xproto::EventMask::Exposure
                     | xproto::EventMask::StructureNotify
@@ -54,7 +65,7 @@ impl Connection {
             );
 
         self.conn.create_window(
-            COPY_DEPTH_FROM_PARENT,
+            depth,
             win_id,
             screen.root,
             0,
@@ -63,7 +74,7 @@ impl Connection {
             height,
             0,
             xproto::WindowClass::InputOutput,
-            0,
+            visual_id,
             &win_aux,
         )?;
 
@@ -128,7 +139,7 @@ impl Connection {
                 win_id,
                 width,
                 height,
-                screen.root_depth,
+                depth,
                 shmseg,
                 0,
             ) {
@@ -138,7 +149,7 @@ impl Connection {
         } else {
             frame_buffer_len = (width as usize) * (height as usize) * 4;
             self.conn
-                .create_pixmap(screen.root_depth, pixmap, win_id, width, height)?;
+                .create_pixmap(depth, pixmap, win_id, width, height)?;
             let addr = unsafe {
                 mmap(
                     null_mut(),
@@ -161,7 +172,7 @@ impl Connection {
             };
 
             buffer_kind = WindowBufferKind::Native {
-                screen_depth: screen.root_depth,
+                depth,
             };
         }
 
@@ -178,6 +189,7 @@ impl Connection {
             buffer_kind,
             pixmap,
             gcontext,
+            colormap,
             win_id,
             width,
             height,
@@ -197,13 +209,14 @@ impl Connection {
             munmap(window.buffer.as_mut_ptr() as *mut _, window.buffer.len());
         }
         self.conn.free_pixmap(window.pixmap)?;
-        self.conn.destroy_window(window.win_id).unwrap();
+        self.conn.destroy_window(window.win_id)?;
+        self.conn.free_colormap(window.colormap)?;
         Ok(())
     }
 
     pub fn redraw_window(&self, win_id: u32, window: &Window) {
         match window.buffer_kind {
-            WindowBufferKind::Native { screen_depth } => {
+            WindowBufferKind::Native { depth } => {
                 self.conn
                     .put_image(
                         xproto::ImageFormat::ZPixmap,
@@ -214,7 +227,7 @@ impl Connection {
                         0,
                         0,
                         0,
-                        screen_depth,
+                        depth,
                         window.buffer,
                     )
                     .unwrap();
@@ -251,5 +264,47 @@ impl Connection {
             }
         }
         self.conn.flush().unwrap();
+    }
+
+    // Next function is take from `x11rb` crate cairo example
+
+    /// Choose a visual to use. This function tries to find a depth=32 visual and falls back to the
+    /// screen's default visual.
+    fn choose_visual(&self, screen_num: usize) -> Result<(u8, Visualid), ReplyError> {
+        let depth = 32;
+        let screen = &self.conn.setup().roots[screen_num];
+
+        // Try to use XRender to find a visual with alpha support
+        let has_render = self.conn
+            .extension_information(xrender::X11_EXTENSION_NAME)?
+            .is_some();
+        if has_render {
+            let formats = self.conn.render_query_pict_formats()?.reply()?;
+            // Find the ARGB32 format that must be supported.
+            let format = formats
+                .formats
+                .iter()
+                .filter(|info| (info.type_, info.depth) == (PictType::Direct, depth))
+                .filter(|info| {
+                    let d = info.direct;
+                    (d.red_mask, d.green_mask, d.blue_mask, d.alpha_mask) == (0xff, 0xff, 0xff, 0xff)
+                })
+                .find(|info| {
+                    let d = info.direct;
+                    (d.red_shift, d.green_shift, d.blue_shift, d.alpha_shift) == (16, 8, 0, 24)
+                });
+            if let Some(format) = format {
+                // Now we need to find the visual that corresponds to this format
+                if let Some(visual) = formats.screens[screen_num]
+                    .depths
+                    .iter()
+                    .flat_map(|d| &d.visuals)
+                    .find(|v| v.format == format.id)
+                {
+                    return Ok((format.depth, visual.visual));
+                }
+            }
+        }
+        Ok((screen.root_depth, screen.root_visual))
     }
 }

@@ -12,8 +12,8 @@ use std::{
 use winapi::um::{
     libloaderapi::GetModuleHandleW,
     winuser::{
-        CreateWindowExW, PostQuitMessage, RegisterClassW, DefWindowProcW, CS_HREDRAW, CS_OWNDC, CS_VREDRAW,
-        WNDCLASSW, WS_MINIMIZEBOX, WS_OVERLAPPEDWINDOW, WS_SYSMENU, WS_VISIBLE,
+        CreateWindowExW, DefWindowProcW, PostQuitMessage, RegisterClassW, CS_HREDRAW, CS_OWNDC,
+        CS_VREDRAW, WNDCLASSW, WS_MINIMIZEBOX, WS_OVERLAPPEDWINDOW, WS_SYSMENU, WS_VISIBLE,
     },
 };
 
@@ -101,6 +101,5 @@ impl Connection {
         Ok(())
     }
 
-    pub fn redraw_window(&self, window: &mwin::Window) {
-    }
+    pub fn redraw_window(&self, window: &mwin::Window) {}
 }

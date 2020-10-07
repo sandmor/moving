@@ -1,8 +1,7 @@
-use crate::{error::OSError, event::*, window as mwin, Size, platform::WindowId};
+use crate::{error::OSError, event::*, platform::WindowId, window as mwin, Size};
 use libc::{mmap, MAP_FAILED, MAP_SHARED, PROT_READ, PROT_WRITE};
 use parking_lot::{Mutex, RwLock};
 use std::{
-    io::Write,
     os::unix::io::AsRawFd,
     ptr::{null_mut, NonNull},
     sync::Arc,
@@ -94,7 +93,7 @@ impl Connection {
             match event {
                 Event::Configure { serial } => {
                     xdg_surface.ack_configure(serial);
-                },
+                }
                 _ => {}
             }
         });
@@ -103,28 +102,33 @@ impl Connection {
             use wayland_protocols::xdg_shell::client::xdg_toplevel::Event as WlEvent;
             let window = WindowId(0);
             match event {
-                WlEvent::Configure { width, height, states } => {},
+                WlEvent::Configure { .. } => {}
                 WlEvent::Close => {
-                    top_level_ev_sender.send(Event::WindowEvent { window, event: WindowEvent::CloseRequested }).unwrap();
-                },
+                    top_level_ev_sender
+                        .send(Event::WindowEvent {
+                            window,
+                            event: WindowEvent::CloseRequested,
+                        })
+                        .unwrap();
+                }
                 _ => {}
             }
         });
         surface.commit();
 
-        let mut tmp = tempfile::tempfile().expect("Unable to create a tempfile.");
+        let tmp = tempfile::tempfile().expect("Unable to create a tempfile.");
         tmp.set_len((buf_x * buf_y) as u64 * 4).unwrap();
 
         let pool = self.shm.create_pool(
-            tmp.as_raw_fd(),            // RawFd to the tempfile serving as shared memory
-            buf_x * buf_y * 4,          // size in bytes of the shared memory (4 bytes per pixel)
+            tmp.as_raw_fd(),   // RawFd to the tempfile serving as shared memory
+            buf_x * buf_y * 4, // size in bytes of the shared memory (4 bytes per pixel)
         );
         let buffer = pool.create_buffer(
             0,                  // Start of the buffer in the pool
             buf_x,              // width of the buffer in pixels
             buf_y,              // height of the buffer in pixels
             (buf_x * 4) as i32, // number of bytes between the beginning of two consecutive lines
-            Format::Xrgb8888,   // chosen encoding for the data
+            Format::Argb8888,   // chosen encoding for the data
         );
 
         self.event_queue

@@ -1,9 +1,6 @@
-use std::{collections::BTreeMap, sync::Arc};
 use parking_lot::RwLock;
-use winapi::{
-    shared::windef::HWND,
-    um::winuser::WM_DESTROY,
-};
+use std::{collections::BTreeMap, sync::Arc};
+use winapi::{shared::windef::HWND, um::winuser::WM_DESTROY};
 
 use crate::{error::OSError, event::Event};
 mod clipboard;
@@ -28,12 +25,14 @@ unsafe impl Send for WindowId {}
 
 #[derive(Debug)]
 pub struct Connection {
-    windows: RwLock<BTreeMap<WindowId, Arc<RwLock<WindowPlatformData>>>>
+    windows: RwLock<BTreeMap<WindowId, Arc<RwLock<WindowPlatformData>>>>,
 }
 
 impl Connection {
     pub fn new() -> Result<Self, OSError> {
-        Ok(Self { windows: RwLock::new(BTreeMap::new()) })
+        Ok(Self {
+            windows: RwLock::new(BTreeMap::new()),
+        })
     }
 }
 

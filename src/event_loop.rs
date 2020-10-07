@@ -1,5 +1,4 @@
 use crate::{error::OSError, event::*, platform::*, window::*, CONNECTION};
-use lazy_static::lazy_static;
 use parking_lot::RwLock;
 use std::{cell::RefCell, collections::BTreeMap, sync::Arc, thread};
 

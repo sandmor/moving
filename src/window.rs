@@ -35,7 +35,6 @@ impl PixelsBox {
     }
 }
 
-
 /// Be careful the windows support transparency and are fully transparent at the start
 pub struct Window {
     pub(crate) id: WindowId,

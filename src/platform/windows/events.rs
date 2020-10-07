@@ -1,7 +1,13 @@
 use super::*;
 use crate::{error::*, event::*};
 use lazy_static::lazy_static;
-use winapi::{um::winuser::DefWindowProcW, shared::{minwindef::{LRESULT, WPARAM, LPARAM, UINT}, windef::HWND}};
+use winapi::{
+    shared::{
+        minwindef::{LPARAM, LRESULT, UINT, WPARAM},
+        windef::HWND,
+    },
+    um::winuser::DefWindowProcW,
+};
 
 lazy_static! {
     static ref EVENTS_CHANNEL: (flume::Sender<Event>, flume::Receiver<Event>) = flume::unbounded();
@@ -24,10 +30,13 @@ pub(super) unsafe extern "system" fn window_proc(
 
         //PostQuitMessage(0);
         println!("HIT");
-        EVENTS_CHANNEL.0.send(Event::WindowEvent {
-            window: WindowId::from_hwnd(h_wnd),
-            event: WindowEvent::CloseRequested,
-        }).unwrap();
+        EVENTS_CHANNEL
+            .0
+            .send(Event::WindowEvent {
+                window: WindowId::from_hwnd(h_wnd),
+                event: WindowEvent::CloseRequested,
+            })
+            .unwrap();
     }
 
     DefWindowProcW(h_wnd, msg, w_param, l_param)

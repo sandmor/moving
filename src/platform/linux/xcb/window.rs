@@ -10,13 +10,12 @@ use std::{
 use x11rb::{
     connection::{Connection as XConnection, RequestConnection},
     protocol::{
+        render::{self as xrender, ConnectionExt as _, PictType},
         shm::{self, ConnectionExt as _},
-        xproto::{self, Visualid, ConnectionExt, ColormapAlloc},
-        render::{self as xrender, ConnectionExt as _, PictType}
+        xproto::{self, ColormapAlloc, ConnectionExt, Visualid},
     },
-    wrapper::ConnectionExt as _,
     rust_connection::ReplyError,
-    COPY_DEPTH_FROM_PARENT,
+    wrapper::ConnectionExt as _,
 };
 
 #[derive(Debug)]
@@ -51,7 +50,8 @@ impl Connection {
         let height = builder.height as u16;
 
         let colormap = self.conn.generate_id()?;
-        self.conn.create_colormap(ColormapAlloc::None, colormap, screen.root, visual_id)?;
+        self.conn
+            .create_colormap(ColormapAlloc::None, colormap, screen.root, visual_id)?;
 
         let win_aux = xproto::CreateWindowAux::new()
             .win_gravity(xproto::Gravity::NorthWest)
@@ -134,15 +134,10 @@ impl Connection {
 
             buffer_kind = WindowBufferKind::Shm(shmseg);
 
-            if let Err(e) = self.conn.shm_create_pixmap(
-                pixmap,
-                win_id,
-                width,
-                height,
-                depth,
-                shmseg,
-                0,
-            ) {
+            if let Err(e) = self
+                .conn
+                .shm_create_pixmap(pixmap, win_id, width, height, depth, shmseg, 0)
+            {
                 let _ = self.conn.shm_detach(shmseg);
                 return Err(e.into());
             }
@@ -171,9 +166,7 @@ impl Connection {
                 std::slice::from_raw_parts_mut(frame_buffer_ptr.as_ptr(), frame_buffer_len)
             };
 
-            buffer_kind = WindowBufferKind::Native {
-                depth,
-            };
+            buffer_kind = WindowBufferKind::Native { depth };
         }
 
         self.conn.flush()?;
@@ -275,7 +268,8 @@ impl Connection {
         let screen = &self.conn.setup().roots[screen_num];
 
         // Try to use XRender to find a visual with alpha support
-        let has_render = self.conn
+        let has_render = self
+            .conn
             .extension_information(xrender::X11_EXTENSION_NAME)?
             .is_some();
         if has_render {
@@ -287,7 +281,8 @@ impl Connection {
                 .filter(|info| (info.type_, info.depth) == (PictType::Direct, depth))
                 .filter(|info| {
                     let d = info.direct;
-                    (d.red_mask, d.green_mask, d.blue_mask, d.alpha_mask) == (0xff, 0xff, 0xff, 0xff)
+                    (d.red_mask, d.green_mask, d.blue_mask, d.alpha_mask)
+                        == (0xff, 0xff, 0xff, 0xff)
                 })
                 .find(|info| {
                     let d = info.direct;

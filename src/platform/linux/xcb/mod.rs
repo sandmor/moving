@@ -1,5 +1,4 @@
 use crate::{error::OSError, event::Event};
-use lazy_static::lazy_static;
 use mime::Mime;
 use parking_lot::Mutex;
 use std::{

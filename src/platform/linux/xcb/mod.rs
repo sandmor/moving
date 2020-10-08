@@ -33,6 +33,7 @@ atom_manager! {
         INCR,
         CLIPBOARD_RECEIVER,
         NULL,
+        _MOTIF_WM_HINTS,
         _NET_WM_NAME,
     }
 }
@@ -42,7 +43,6 @@ pub struct Connection {
     conn: XCBConnection,
     screen_num: usize,
     shm: bool,     // Is shared memory buffers supported?
-    xrender: bool, // Is xrender supported(translucent windows)?
     atoms: AtomCollection,
     hidden_window: u32,
     clipboard_receiver_semaphore: Arc<Mutex<Option<bool>>>,
@@ -61,11 +61,6 @@ impl Connection {
             .ok()
             .and_then(|cookie| cookie.reply().ok())
             .filter(|reply| reply.shared_pixmaps)
-            .is_some();
-        let xrender = conn
-            .render_query_version(7, 5)
-            .ok()
-            .and_then(|cookie| cookie.reply().ok())
             .is_some();
         let screen_root = conn.setup().roots[screen_num].root;
         let win_id = conn.generate_id().unwrap();
@@ -88,7 +83,6 @@ impl Connection {
             conn,
             screen_num,
             shm,
-            xrender,
             atoms,
             hidden_window: win_id,
             clipboard_receiver_semaphore: Arc::new(Mutex::new(None)),

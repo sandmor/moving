@@ -10,6 +10,7 @@ use std::{
     os::unix::io::AsRawFd,
     ptr::{null_mut, NonNull},
     sync::Arc,
+    mem
 };
 use x11rb::{
     connection::{Connection as XConnection, RequestConnection},
@@ -21,6 +22,15 @@ use x11rb::{
     rust_connection::ReplyError,
     wrapper::ConnectionExt as _,
 };
+
+#[derive(Debug)]
+struct MotifHints {
+    flags: u64,
+    functions: u64,
+    decorations: u64,
+    input_mode: i64,
+    status: u64,
+}
 
 #[derive(Debug)]
 pub enum WindowBufferKind {
@@ -73,7 +83,11 @@ impl Connection {
             .event_mask(
                 xproto::EventMask::Exposure
                     | xproto::EventMask::StructureNotify
-                    | xproto::EventMask::NoEvent,
+                    | xproto::EventMask::PointerMotion
+                    | xproto::EventMask::ButtonPress
+                    | xproto::EventMask::ButtonRelease
+                    | xproto::EventMask::KeyPress
+                    | xproto::EventMask::KeyRelease,
             );
 
         self.conn.create_window(
@@ -122,6 +136,26 @@ impl Connection {
                 .unwrap_or("[Invalid]")
                 .as_bytes(),
         )?;
+
+        if !builder.decorations {
+            let hints = MotifHints {
+                flags: 2,
+                decorations: 0,
+                functions: 0,
+                input_mode: 0,
+                status: 0
+            };
+            let hints = unsafe { mem::transmute::<MotifHints, [u8; mem::size_of::<MotifHints>()]>(hints) };
+            self.conn.change_property(
+                xproto::PropMode::Replace,
+                win_id,
+                self.atoms._MOTIF_WM_HINTS,
+                self.atoms._MOTIF_WM_HINTS,
+                32,
+                (hints.len() / 4) as u32,
+                &hints
+            )?;
+        }
 
         let gc_aux = xproto::CreateGCAux::new().graphics_exposures(0);
         let gcontext = self.conn.generate_id()?;

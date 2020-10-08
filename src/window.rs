@@ -34,11 +34,16 @@ impl PixelsBox {
         }
     }
 
-    pub fn put_pixel(&mut self, x: usize, y: usize, color: u32) {
+    pub fn pixels_mut(&self) -> impl Iterator<Item=(usize, usize, &mut u32)> {
+        todo!()
+    }
+
+    /// Note that although it takes an immutable reference to self, it sets a pixel in the buffer
+    /// this is made for simplify parallerization processes
+    pub fn put_pixel(&self, x: usize, y: usize, color: u32) {
         let width = self.size.width as usize;
-        let height = self.size.height as usize;
         let offset = (y * width) + x;
-        if offset >= width * height {
+        if offset >= self.frame_buffer_len {
             return;
         }
         unsafe {
@@ -54,7 +59,7 @@ unsafe impl Send for PixelsBox {}
 pub struct Window {
     pub(crate) id: WindowId,
     pub(crate) pixels_box: Arc<RwLock<PixelsBox>>,
-    // This is used to store platform specifid information
+    // This is used to store platform-specific information
     pub(crate) platform_data: Arc<RwLock<WindowPlatformData>>,
 }
 
@@ -95,6 +100,7 @@ pub struct WindowBuilder {
     pub(crate) width: f64,
     pub(crate) height: f64,
     pub(crate) title: String,
+    pub(crate) decorations: bool,
 }
 
 impl WindowBuilder {
@@ -103,11 +109,17 @@ impl WindowBuilder {
             width: 800.0,
             height: 600.0,
             title: String::new(),
+            decorations: true
         }
     }
 
     pub fn with_title(mut self, title: impl Into<String>) -> Self {
         self.title = title.into();
+        self
+    }
+
+    pub fn with_decorations(mut self, decorations: bool) -> Self {
+        self.decorations = decorations;
         self
     }
 

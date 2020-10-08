@@ -19,8 +19,10 @@ use wayland_client::{
         wl_shm::{Format, WlShm},
         wl_shm_pool::WlShmPool,
         wl_surface::WlSurface,
+        wl_seat::WlSeat,
+        wl_pointer
     },
-    Display, EventQueue, GlobalManager, Main,
+    Display, EventQueue, GlobalManager, Main, Filter, event_enum
 };
 use wayland_protocols::xdg_shell::client::{xdg_toplevel::XdgToplevel, xdg_wm_base::XdgWmBase};
 
@@ -33,6 +35,11 @@ pub struct Window {
     buf_y: i32,
     on_slab_offset: usize,
 }
+
+event_enum!(
+    Events |
+    Pointer => wl_pointer::WlPointer
+);
 
 pub struct Connection {
     display: Display,
@@ -71,6 +78,39 @@ impl Connection {
             // unresponsive applications
             if let Event::Ping { serial } = event {
                 xdg_wm_base.pong(serial);
+            }
+        });
+
+        // initialize a seat to retrieve pointer & keyboard events
+        let common_filter = Filter::new(move |event, _, _| match event {
+            Events::Pointer { event, .. } => match event {
+                wl_pointer::Event::Enter { surface_x, surface_y, .. } => {
+                    println!("Pointer entered at ({}, {}).", surface_x, surface_y);
+                }
+                wl_pointer::Event::Leave { .. } => {
+                    println!("Pointer left.");
+                }
+                wl_pointer::Event::Motion { surface_x, surface_y, .. } => {
+                    println!("Pointer moved to ({}, {}).", surface_x, surface_y);
+                }
+                wl_pointer::Event::Button { button, state, .. } => {
+                    println!("Button {} was {:?}.", button, state);
+                }
+                _ => {}
+            },
+            _ => {}
+        });
+
+        let mut pointer_created = false;
+        globals.instantiate_exact::<WlSeat>(1).unwrap().quick_assign(move |seat, event, _| {
+            use wayland_client::protocol::wl_seat::{Capability, Event as SeatEvent};
+
+            if let SeatEvent::Capabilities { capabilities } = event {
+                if !pointer_created && capabilities.contains(Capability::Pointer) {
+                    // create the pointer only once
+                    pointer_created = true;
+                    seat.get_pointer().assign(common_filter.clone());
+                }
             }
         });
 

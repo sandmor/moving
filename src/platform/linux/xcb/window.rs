@@ -37,8 +37,8 @@ pub struct Window {
     colormap: u32,
     win_id: u32,
     depth: u8,
-    width: u16,
-    height: u16,
+    pub(super) width: u16,
+    pub(super) height: u16,
     pixels_box: Arc<RwLock<mwin::PixelsBox>>,
 }
 
@@ -239,10 +239,11 @@ impl Connection {
         self.conn.free_pixmap(window.pixmap)?;
         self.conn.destroy_window(window.win_id)?;
         self.conn.free_colormap(window.colormap)?;
+        self.windows.write().remove(&WindowId::from_x11(window.win_id));
         Ok(())
     }
 
-    pub fn redraw_window(&self, win_id: u32, window: &Window) {
+    pub fn redraw_window(&self, window: &Window) {
         match window.buffer_kind {
             WindowBufferKind::Native { depth } => {
                 self.conn
@@ -263,8 +264,7 @@ impl Connection {
                 self.conn
                     .copy_area(
                         window.pixmap,
-                        win_id,
-                        //screen_gcontext,
+                        window.win_id,
                         window.gcontext,
                         0,
                         0,
@@ -279,7 +279,7 @@ impl Connection {
                 self.conn
                     .copy_area(
                         window.pixmap,
-                        win_id,
+                        window.win_id,
                         window.gcontext,
                         0,
                         0,

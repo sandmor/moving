@@ -1,10 +1,12 @@
-use crate::{error::OSError, event::*, platform::WindowId, window as mwin, Size};
+use crate::{error::OSError, event::*, platform::{WindowId, WindowPlatformData}, window as mwin, Size};
 use libc::{mmap, MAP_FAILED, MAP_SHARED, PROT_READ, PROT_WRITE};
 use parking_lot::{Mutex, RwLock};
+use slab::Slab;
 use std::{
     os::unix::io::AsRawFd,
     ptr::{null_mut, NonNull},
     sync::Arc,
+    collections::BTreeMap
 };
 use wayland_client::{
     protocol::{
@@ -15,14 +17,16 @@ use wayland_client::{
     },
     Display, EventQueue, GlobalManager, Main,
 };
-use wayland_protocols::xdg_shell::client::xdg_wm_base::XdgWmBase;
+use wayland_protocols::xdg_shell::client::{xdg_wm_base::XdgWmBase, xdg_toplevel::XdgToplevel};
 
 #[derive(Debug)]
 pub struct Window {
+    xdg_toplevel: Main<XdgToplevel>,
     pool: Main<WlShmPool>,
     surface: Main<WlSurface>,
     buf_x: i32,
     buf_y: i32,
+    on_slab_offset: usize,
 }
 
 pub struct Connection {
@@ -33,6 +37,7 @@ pub struct Connection {
     shm: Main<WlShm>,
     compositor: Main<WlCompositor>,
     xdg_wm_base: Main<XdgWmBase>,
+    windows: RwLock<Slab<Arc<RwLock<WindowPlatformData>>>>
 }
 
 impl Connection {
@@ -74,19 +79,20 @@ impl Connection {
             shm,
             compositor,
             xdg_wm_base,
+            windows: RwLock::new(Slab::new())
         })
     }
 
     pub fn create_window(
         &self,
         builder: mwin::WindowBuilder,
-    ) -> Result<(u32, Window, Arc<RwLock<mwin::PixelsBox>>), OSError> {
+    ) -> Result<(u32, Arc<RwLock<WindowPlatformData>>, Arc<RwLock<mwin::PixelsBox>>), OSError> {
         let buf_x: i32 = builder.width as i32;
         let buf_y: i32 = builder.height as i32;
 
         let surface = self.compositor.create_surface();
         let xdg_surface = self.xdg_wm_base.get_xdg_surface(&surface);
-        let top_level = xdg_surface.get_toplevel();
+        let xdg_toplevel = xdg_surface.get_toplevel();
 
         xdg_surface.quick_assign(|xdg_surface, event, _| {
             use wayland_protocols::xdg_shell::client::xdg_surface::Event;
@@ -98,7 +104,7 @@ impl Connection {
             }
         });
         let top_level_ev_sender = self.events_sender.clone();
-        top_level.quick_assign(move |_, event, _| {
+        xdg_toplevel.quick_assign(move |_, event, _| {
             use wayland_protocols::xdg_shell::client::xdg_toplevel::Event as WlEvent;
             let window = WindowId(0);
             match event {
@@ -166,18 +172,28 @@ impl Connection {
             frame_buffer_len,
         )));
 
-        let window = Window {
+        let window = Arc::new(RwLock::new(WindowPlatformData::Wayland(Window {
+            xdg_toplevel,
             pool,
             surface,
             buf_x,
             buf_y,
-        };
-        Ok((0, window, pixels_box))
+            on_slab_offset: 0
+        })));
+        let id = self.windows.write().insert(window.clone());
+        window.write().wayland_mut().on_slab_offset = id;
+        Ok((id as u32, window, pixels_box))
     }
 
     pub fn redraw_window(&self, window: &Window) {
         window.surface.damage(0, 0, window.buf_x, window.buf_y);
         window.surface.commit();
+    }
+
+    pub fn destroy_window(&self, window: &mut Window) -> Result<(), OSError> {
+        window.xdg_toplevel.destroy();
+        self.windows.write().remove(window.on_slab_offset);
+        Ok(())
     }
 
     pub fn poll_event(&self) -> Result<Option<Event>, OSError> {

@@ -34,6 +34,13 @@ impl WindowPlatformData {
         }
     }
 
+    fn wayland_mut(&mut self) -> &mut wayland::Window {
+        match self {
+            Self::Wayland(ref mut w) => w,
+            _ => unreachable!(),
+        }
+    }
+
     fn xcb(&self) -> &xcb::Window {
         match self {
             Self::Xcb(ref x) => x,
@@ -77,10 +84,10 @@ impl Connection {
         match self {
             Self::Wayland(wl) => wl
                 .create_window(builder)
-                .map(|(win_id, wl_win, pixels_box)| Window {
+                .map(|(win_id, platform_data, pixels_box)| Window {
                     id: WindowId(win_id),
                     pixels_box,
-                    platform_data: Arc::new(RwLock::new(WindowPlatformData::Wayland(wl_win))),
+                    platform_data,
                 }),
             Self::Xcb(xcb) => {
                 xcb.create_window(builder)
@@ -95,7 +102,7 @@ impl Connection {
 
     pub fn destroy_window(&self, window: &mut WindowPlatformData) -> Result<(), OSError> {
         match self {
-            Self::Wayland(_) => todo!(),
+            Self::Wayland(wl) => wl.destroy_window(window.wayland_mut()),
             Self::Xcb(xcb) => xcb.destroy_window(window.xcb_mut()),
         }
     }
@@ -103,7 +110,7 @@ impl Connection {
     pub fn redraw_window(&self, window: &Window) {
         match self {
             Self::Wayland(wl) => wl.redraw_window(window.platform_data.read().wayland()),
-            Self::Xcb(xcb) => xcb.redraw_window(window.id.0, window.platform_data.read().xcb()),
+            Self::Xcb(xcb) => xcb.redraw_window(window.platform_data.read().xcb()),
         }
     }
 

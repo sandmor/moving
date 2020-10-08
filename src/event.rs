@@ -14,4 +14,5 @@ pub enum WindowEvent {
     CloseRequested,
     Dirted,
     Destroy,
+    Resize { width: f64, height: f64 },
 }

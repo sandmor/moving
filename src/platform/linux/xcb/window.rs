@@ -1,5 +1,9 @@
 use super::Connection;
-use crate::{error::OSError, window as mwin, Size};
+use crate::{
+    error::OSError,
+    platform::{WindowId, WindowPlatformData},
+    window as mwin, Size,
+};
 use libc::{mmap, munmap, MAP_ANON, MAP_FAILED, MAP_PRIVATE, MAP_SHARED, PROT_READ, PROT_WRITE};
 use parking_lot::RwLock;
 use std::{
@@ -32,6 +36,7 @@ pub struct Window {
     gcontext: xproto::Gcontext,
     colormap: u32,
     win_id: u32,
+    depth: u8,
     width: u16,
     height: u16,
     pixels_box: Arc<RwLock<mwin::PixelsBox>>,
@@ -41,7 +46,14 @@ impl Connection {
     pub fn create_window(
         &self,
         builder: mwin::WindowBuilder,
-    ) -> Result<(u32, Window, Arc<RwLock<mwin::PixelsBox>>), OSError> {
+    ) -> Result<
+        (
+            u32,
+            Arc<RwLock<WindowPlatformData>>,
+            Arc<RwLock<mwin::PixelsBox>>,
+        ),
+        OSError,
+    > {
         let (depth, visual_id) = self.choose_visual(self.screen_num)?;
 
         let screen = &self.conn.setup().roots[self.screen_num];
@@ -93,6 +105,37 @@ impl Connection {
         self.conn.map_window(win_id)?;
         self.conn.flush()?;
 
+        let (pixmap, buffer, buffer_kind, pixels_box) =
+            self.create_window_buffer(win_id, depth, builder.width, builder.height)?;
+        let pixels_box = Arc::new(RwLock::new(pixels_box));
+
+        let window = Arc::new(RwLock::new(WindowPlatformData::Xcb(Window {
+            buffer,
+            buffer_kind,
+            pixmap,
+            gcontext,
+            colormap,
+            win_id,
+            depth,
+            width,
+            height,
+            pixels_box: pixels_box.clone(),
+        })));
+
+        self.windows
+            .write()
+            .insert(WindowId::from_x11(win_id), window.clone());
+
+        Ok((win_id, window, pixels_box))
+    }
+
+    pub fn create_window_buffer(
+        &self,
+        win_id: u32,
+        depth: u8,
+        width: f64,
+        height: f64,
+    ) -> Result<(u32, &'static mut [u8], WindowBufferKind, mwin::PixelsBox), OSError> {
         let pixmap = self.conn.generate_id()?;
 
         let buffer;
@@ -134,17 +177,22 @@ impl Connection {
 
             buffer_kind = WindowBufferKind::Shm(shmseg);
 
-            if let Err(e) = self
-                .conn
-                .shm_create_pixmap(pixmap, win_id, width, height, depth, shmseg, 0)
-            {
+            if let Err(e) = self.conn.shm_create_pixmap(
+                pixmap,
+                win_id,
+                width as u16,
+                height as u16,
+                depth,
+                shmseg,
+                0,
+            ) {
                 let _ = self.conn.shm_detach(shmseg);
                 return Err(e.into());
             }
         } else {
             frame_buffer_len = (width as usize) * (height as usize) * 4;
             self.conn
-                .create_pixmap(depth, pixmap, win_id, width, height)?;
+                .create_pixmap(depth, pixmap, win_id, width as u16, height as u16)?;
             let addr = unsafe {
                 mmap(
                     null_mut(),
@@ -170,25 +218,12 @@ impl Connection {
         }
 
         self.conn.flush()?;
-
-        let pixels_box = Arc::new(RwLock::new(mwin::PixelsBox::from_raw(
-            Size::new(builder.width, builder.height),
-            frame_buffer_ptr,
-            frame_buffer_len,
-        )));
-
-        let window = Window {
+        Ok((
+            pixmap,
             buffer,
             buffer_kind,
-            pixmap,
-            gcontext,
-            colormap,
-            win_id,
-            width,
-            height,
-            pixels_box: pixels_box.clone(),
-        };
-        Ok((win_id, window, pixels_box))
+            mwin::PixelsBox::from_raw(Size::new(width, height), frame_buffer_ptr, frame_buffer_len),
+        ))
     }
 
     pub fn destroy_window(&self, window: &mut Window) -> Result<(), OSError> {
@@ -257,6 +292,37 @@ impl Connection {
             }
         }
         self.conn.flush().unwrap();
+    }
+
+    pub(super) fn update_win_buffer_size(
+        &self,
+        window: &mut Window,
+        new_width: u16,
+        new_height: u16,
+    ) -> Result<(), OSError> {
+        match window.buffer_kind {
+            WindowBufferKind::Native { .. } => {}
+            WindowBufferKind::Shm(shmseg) => {
+                self.conn.shm_detach(shmseg)?;
+            }
+        }
+        unsafe {
+            munmap(window.buffer.as_mut_ptr() as *mut _, window.buffer.len());
+        }
+        self.conn.free_pixmap(window.pixmap)?;
+        let (pixmap, buffer, buffer_kind, pixels_box) = self.create_window_buffer(
+            window.win_id,
+            window.depth,
+            new_width as f64,
+            new_height as f64,
+        )?;
+        window.pixmap = pixmap;
+        window.buffer = buffer;
+        window.buffer_kind = buffer_kind;
+        *window.pixels_box.write() = pixels_box;
+        window.width = new_width;
+        window.height = new_height;
+        Ok(())
     }
 
     // Next function is take from `x11rb` crate cairo example

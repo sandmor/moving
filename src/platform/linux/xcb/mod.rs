@@ -1,6 +1,7 @@
+use super::{WindowId, WindowPlatformData};
 use crate::{error::OSError, event::Event};
 use mime::Mime;
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 use std::{
     collections::{BTreeMap, VecDeque},
     sync::{atomic::AtomicBool, Arc},
@@ -47,6 +48,7 @@ pub struct Connection {
     events_queue: Mutex<VecDeque<Event>>,
     clipboard_data: Mutex<BTreeMap<Mime, Vec<u8>>>,
     clipboard_data_chunk_received: AtomicBool,
+    windows: RwLock<BTreeMap<WindowId, Arc<RwLock<WindowPlatformData>>>>,
 }
 
 impl Connection {
@@ -92,6 +94,7 @@ impl Connection {
             events_queue: Mutex::new(VecDeque::new()),
             clipboard_data: Mutex::new(BTreeMap::new()),
             clipboard_data_chunk_received: AtomicBool::new(false),
+            windows: RwLock::new(BTreeMap::new()),
         })
     }
 }

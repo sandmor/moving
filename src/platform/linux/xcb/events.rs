@@ -26,6 +26,20 @@ impl Connection {
 
     fn manage_event(&self, event: XEvent) -> Option<Event> {
         match event {
+            XEvent::ConfigureNotify(e) => {
+                if let Some(window) = self.windows.read().get(&WindowId::from_x11(e.window)) {
+                    self.update_win_buffer_size(&mut window.write().xcb_mut(), e.width, e.height)
+                        .unwrap();
+                    return Some(Event::WindowEvent {
+                        window: WindowId::from_x11(e.window),
+                        event: WindowEvent::Resize {
+                            width: e.width as f64,
+                            height: e.height as f64,
+                        },
+                    });
+                }
+                None
+            }
             XEvent::SelectionNotify(e) => {
                 self.clipboard_receiver_semaphore
                     .lock()
@@ -45,12 +59,6 @@ impl Connection {
                     .store(true, Ordering::SeqCst);
                 None
             }
-            _ => self.try_convert_event(event),
-        }
-    }
-
-    fn try_convert_event(&self, xevent: XEvent) -> Option<Event> {
-        Some(match xevent {
             XEvent::ClientMessage(event) => {
                 let data = event.data.as_data32();
                 if event.format == 32 && data[0] == self.atoms.WM_DELETE_WINDOW {
@@ -61,18 +69,16 @@ impl Connection {
                 }
                 return None;
             }
-            XEvent::Expose(e) if e.count == 0 => Event::WindowEvent {
+            XEvent::Expose(e) if e.count == 0 => Some(Event::WindowEvent {
                 window: WindowId(e.window),
                 event: WindowEvent::Dirted,
-            },
-            XEvent::DestroyNotify(e) => Event::WindowEvent {
+            }),
+            XEvent::DestroyNotify(e) => Some(Event::WindowEvent {
                 window: WindowId(e.window),
                 event: WindowEvent::Destroy,
-            },
-            _ => {
-                return None;
-            }
-        })
+            }),
+            _ => None,
+        }
     }
 
     pub fn run_event_for_queue(&self) -> Result<(), OSError> {

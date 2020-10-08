@@ -10,6 +10,16 @@ use std::sync::Arc;
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct WindowId(pub(crate) u32);
 
+impl WindowId {
+    fn from_x11(x11: u32) -> Self {
+        Self(x11)
+    }
+
+    fn to_x11(&self) -> u32 {
+        self.0
+    }
+}
+
 #[derive(Debug)]
 pub enum WindowPlatformData {
     Xcb(xcb::Window),
@@ -38,6 +48,9 @@ impl WindowPlatformData {
         }
     }
 }
+
+unsafe impl Sync for WindowPlatformData {}
+unsafe impl Send for WindowPlatformData {}
 
 pub enum Connection {
     Wayland(wayland::Connection),
@@ -69,13 +82,14 @@ impl Connection {
                     pixels_box,
                     platform_data: Arc::new(RwLock::new(WindowPlatformData::Wayland(wl_win))),
                 }),
-            Self::Xcb(xcb) => xcb
-                .create_window(builder)
-                .map(|(win_id, xwin, pixels_box)| Window {
-                    id: WindowId(win_id),
-                    pixels_box,
-                    platform_data: Arc::new(RwLock::new(WindowPlatformData::Xcb(xwin))),
-                }),
+            Self::Xcb(xcb) => {
+                xcb.create_window(builder)
+                    .map(|(win_id, platform_data, pixels_box)| Window {
+                        id: WindowId::from_x11(win_id),
+                        pixels_box,
+                        platform_data,
+                    })
+            }
         }
     }
 

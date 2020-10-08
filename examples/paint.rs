@@ -7,7 +7,10 @@ use std::time::Instant;
 
 fn main() {
     let event_loop = EventLoop::new();
-    let window = WindowBuilder::new().build(&event_loop).unwrap();
+    let window = WindowBuilder::new()
+        .with_title("Paint example")
+        .build(&event_loop)
+        .unwrap();
     let start = Instant::now();
     event_loop.run(move |event, control_flow| {
         *control_flow = ControlFlow::Poll;

@@ -90,12 +90,37 @@ impl Connection {
             &win_aux,
         )?;
 
+        self.conn.change_property8(
+            xproto::PropMode::Replace,
+            win_id,
+            xproto::AtomEnum::WM_NAME,
+            xproto::AtomEnum::STRING,
+            builder.title.as_bytes(),
+        )?;
+        self.conn.change_property8(
+            xproto::PropMode::Replace,
+            win_id,
+            self.atoms._NET_WM_NAME,
+            self.atoms.UTF8_STRING,
+            builder.title.as_bytes(),
+        )?;
         self.conn.change_property32(
             xproto::PropMode::Replace,
             win_id,
             self.atoms.WM_PROTOCOLS,
             xproto::AtomEnum::ATOM,
             &[self.atoms.WM_DELETE_WINDOW],
+        )?;
+        self.conn.change_property8(
+            xproto::PropMode::Replace,
+            win_id,
+            xproto::AtomEnum::WM_CLIENT_MACHINE,
+            self.atoms.STRING,
+            // Text encoding in X11 is complicated. Let's use UTF-8 and hope for the best.
+            gethostname::gethostname()
+                .to_str()
+                .unwrap_or("[Invalid]")
+                .as_bytes(),
         )?;
 
         let gc_aux = xproto::CreateGCAux::new().graphics_exposures(0);
@@ -239,7 +264,9 @@ impl Connection {
         self.conn.free_pixmap(window.pixmap)?;
         self.conn.destroy_window(window.win_id)?;
         self.conn.free_colormap(window.colormap)?;
-        self.windows.write().remove(&WindowId::from_x11(window.win_id));
+        self.windows
+            .write()
+            .remove(&WindowId::from_x11(window.win_id));
         Ok(())
     }
 

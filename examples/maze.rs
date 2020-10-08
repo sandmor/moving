@@ -230,7 +230,10 @@ impl Maze {
 
 fn main() {
     let event_loop = EventLoop::new();
-    let window = WindowBuilder::new().build(&event_loop).unwrap();
+    let window = WindowBuilder::new()
+        .with_title("Maze(Moving example)")
+        .build(&event_loop)
+        .unwrap();
     let start = Instant::now();
     let maze = Maze::new(800, 600);
     let mut last_frame = Instant::now();

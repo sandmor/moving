@@ -1,12 +1,17 @@
-use crate::{error::OSError, event::*, platform::{WindowId, WindowPlatformData}, window as mwin, Size};
+use crate::{
+    error::OSError,
+    event::*,
+    platform::{WindowId, WindowPlatformData},
+    window as mwin, Size,
+};
 use libc::{mmap, MAP_FAILED, MAP_SHARED, PROT_READ, PROT_WRITE};
 use parking_lot::{Mutex, RwLock};
 use slab::Slab;
 use std::{
+    collections::BTreeMap,
     os::unix::io::AsRawFd,
     ptr::{null_mut, NonNull},
     sync::Arc,
-    collections::BTreeMap
 };
 use wayland_client::{
     protocol::{
@@ -17,7 +22,7 @@ use wayland_client::{
     },
     Display, EventQueue, GlobalManager, Main,
 };
-use wayland_protocols::xdg_shell::client::{xdg_wm_base::XdgWmBase, xdg_toplevel::XdgToplevel};
+use wayland_protocols::xdg_shell::client::{xdg_toplevel::XdgToplevel, xdg_wm_base::XdgWmBase};
 
 #[derive(Debug)]
 pub struct Window {
@@ -37,7 +42,7 @@ pub struct Connection {
     shm: Main<WlShm>,
     compositor: Main<WlCompositor>,
     xdg_wm_base: Main<XdgWmBase>,
-    windows: RwLock<Slab<Arc<RwLock<WindowPlatformData>>>>
+    windows: RwLock<Slab<Arc<RwLock<WindowPlatformData>>>>,
 }
 
 impl Connection {
@@ -79,20 +84,29 @@ impl Connection {
             shm,
             compositor,
             xdg_wm_base,
-            windows: RwLock::new(Slab::new())
+            windows: RwLock::new(Slab::new()),
         })
     }
 
     pub fn create_window(
         &self,
         builder: mwin::WindowBuilder,
-    ) -> Result<(u32, Arc<RwLock<WindowPlatformData>>, Arc<RwLock<mwin::PixelsBox>>), OSError> {
+    ) -> Result<
+        (
+            u32,
+            Arc<RwLock<WindowPlatformData>>,
+            Arc<RwLock<mwin::PixelsBox>>,
+        ),
+        OSError,
+    > {
         let buf_x: i32 = builder.width as i32;
         let buf_y: i32 = builder.height as i32;
 
         let surface = self.compositor.create_surface();
         let xdg_surface = self.xdg_wm_base.get_xdg_surface(&surface);
         let xdg_toplevel = xdg_surface.get_toplevel();
+
+        xdg_toplevel.set_title(builder.title.clone());
 
         xdg_surface.quick_assign(|xdg_surface, event, _| {
             use wayland_protocols::xdg_shell::client::xdg_surface::Event;
@@ -178,7 +192,7 @@ impl Connection {
             surface,
             buf_x,
             buf_y,
-            on_slab_offset: 0
+            on_slab_offset: 0,
         })));
         let id = self.windows.write().insert(window.clone());
         window.write().wayland_mut().on_slab_offset = id;

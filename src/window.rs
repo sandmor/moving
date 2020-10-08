@@ -33,6 +33,18 @@ impl PixelsBox {
             frame_buffer_len,
         }
     }
+
+    pub fn put_pixel(&mut self, x: usize, y: usize, color: u32) {
+        let width = self.size.width as usize;
+        let height = self.size.height as usize;
+        let offset = (y * width) + x;
+        if offset >= width * height {
+            return;
+        }
+        unsafe {
+            *(self.frame_buffer_ptr.as_ptr() as *mut u32).offset(offset as isize) = color;
+        }
+    }
 }
 
 unsafe impl Sync for PixelsBox {}
@@ -69,15 +81,20 @@ impl Window {
         }
     }
 
+    pub fn pixels_box(&self) -> Arc<RwLock<PixelsBox>> {
+        self.pixels_box.clone()
+    }
+
     pub fn redraw(&self) {
         CONNECTION.redraw_window(&self);
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialOrd, PartialEq)]
+#[derive(Debug, Clone, PartialOrd, PartialEq)]
 pub struct WindowBuilder {
     pub(crate) width: f64,
     pub(crate) height: f64,
+    pub(crate) title: String,
 }
 
 impl WindowBuilder {
@@ -85,23 +102,29 @@ impl WindowBuilder {
         WindowBuilder {
             width: 800.0,
             height: 600.0,
+            title: String::new(),
         }
     }
 
-    pub fn with_width(&mut self, width: f64) -> Self {
-        self.width = width;
-        *self
+    pub fn with_title(mut self, title: impl Into<String>) -> Self {
+        self.title = title.into();
+        self
     }
 
-    pub fn with_height(&mut self, height: f64) -> Self {
-        self.height = height;
-        *self
+    pub fn with_width(mut self, width: f64) -> Self {
+        self.width = width;
+        self
     }
 
-    pub fn with_size(&mut self, width: f64, height: f64) -> Self {
+    pub fn with_height(mut self, height: f64) -> Self {
+        self.height = height;
+        self
+    }
+
+    pub fn with_size(mut self, width: f64, height: f64) -> Self {
         self.width = width;
         self.height = height;
-        *self
+        self
     }
 
     pub fn build(self, el: &EventLoop) -> Result<Window, OSError> {

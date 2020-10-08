@@ -30,8 +30,12 @@ impl Connection {
                 if let Some(window) = self.windows.read().get(&WindowId::from_x11(e.window)) {
                     let (width, height) = (window.read().xcb().width, window.read().xcb().height);
                     if width != e.width || height != e.height {
-                        self.update_win_buffer_size(&mut window.write().xcb_mut(), e.width, e.height)
-                            .unwrap();
+                        self.update_win_buffer_size(
+                            &mut window.write().xcb_mut(),
+                            e.width,
+                            e.height,
+                        )
+                        .unwrap();
                         return Some(Event::WindowEvent {
                             window: WindowId::from_x11(e.window),
                             event: WindowEvent::Resize {

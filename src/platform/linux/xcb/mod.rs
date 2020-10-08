@@ -33,6 +33,7 @@ atom_manager! {
         INCR,
         CLIPBOARD_RECEIVER,
         NULL,
+        _NET_WM_NAME,
     }
 }
 

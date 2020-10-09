@@ -1,4 +1,4 @@
-use super::super::{Connection, WindowPlatformData};
+use super::super::{Connection, WindowPlatformData, WindowId};
 use super::Window;
 use crate::{error::OSError, window as mwin, Size};
 use libc::{mmap, MAP_FAILED, MAP_SHARED, PROT_READ, PROT_WRITE};
@@ -50,6 +50,7 @@ impl Connection {
         );
 
         let buffer_surface = self.compositor.create_surface();
+        let buffer_surface_id = buffer_surface.as_ref().id();
         let buffer_subsurface = self
             .subcompositor
             .get_subsurface(&buffer_surface, &frame_surface);
@@ -81,12 +82,10 @@ impl Connection {
             surface: buffer_surface,
             buf_x: builder.width as i32,
             buf_y: builder.height as i32,
-            on_slab_offset: 0,
             pixels_box: pixels_box.clone(),
             frame: Some(frame),
         })));
-        let id = self.windows.write().insert(window.clone());
-        window.write().wayland_mut().on_slab_offset = id;
-        Ok((id as u32, window, pixels_box))
+        self.windows.write().insert(WindowId::from_wayland(buffer_surface_id), window.clone());
+        Ok((buffer_surface_id, window, pixels_box))
     }
 }

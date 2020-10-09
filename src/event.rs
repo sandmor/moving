@@ -41,4 +41,12 @@ pub enum WindowEvent {
         x: f64,
         y: f64,
     },
+    MouseEnter {
+        x: f64,
+        y: f64,
+    },
+    MouseLeave {
+        x: f64,
+        y: f64,
+    },
 }

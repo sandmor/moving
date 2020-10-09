@@ -6,7 +6,7 @@ use crate::{event::Event, window::*};
 use mime::Mime;
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct WindowId(pub(crate) u32);
+pub struct WindowId(u32);
 
 impl WindowId {
     fn from_x11(x11: u32) -> Self {
@@ -16,6 +16,14 @@ impl WindowId {
     /*fn to_x11(&self) -> u32 {
         self.0
     }*/
+
+    fn from_wayland(wayland: u32) -> Self {
+        Self(wayland)
+    }
+
+    fn to_wayland(&self) -> u32 {
+        self.0
+    }
 }
 
 #[derive(Debug)]
@@ -83,7 +91,7 @@ impl Connection {
             Self::Wayland(wl) => {
                 wl.create_window(builder)
                     .map(|(win_id, platform_data, pixels_box)| Window {
-                        id: WindowId(win_id),
+                        id: WindowId::from_wayland(win_id),
                         pixels_box,
                         platform_data,
                     })

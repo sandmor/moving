@@ -27,7 +27,6 @@ pub struct Window {
     surface: Main<WlSurface>,
     buf_x: i32,
     buf_y: i32,
-    on_slab_offset: usize,
     pixels_box: Arc<RwLock<mwin::PixelsBox>>,
     frame: Option<Frame>,
 }
@@ -45,6 +44,7 @@ impl Connection {
         OSError,
     > {
         let surface = self.compositor.create_surface();
+        let surface_id = surface.as_ref().id();
         let xdg_surface = self.xdg_wm_base.get_xdg_surface(&surface);
         let xdg_toplevel = xdg_surface.get_toplevel();
 
@@ -53,7 +53,7 @@ impl Connection {
         let top_level_ev_sender = self.events_sender.clone();
         xdg_toplevel.quick_assign(move |_, event, _| {
             use wayland_protocols::xdg_shell::client::xdg_toplevel::Event as WlEvent;
-            let window = WindowId(0);
+            let window = WindowId::from_wayland(surface_id);
             match event {
                 WlEvent::Configure { .. } => {}
                 WlEvent::Close => {
@@ -100,13 +100,11 @@ impl Connection {
             surface,
             buf_x,
             buf_y,
-            on_slab_offset: 0,
             pixels_box: pixels_box.clone(),
             frame: None,
         })));
-        let id = self.windows.write().insert(window.clone());
-        window.write().wayland_mut().on_slab_offset = id;
-        Ok((id as u32, window, pixels_box))
+        self.windows.write().insert(WindowId::from_wayland(surface_id), window.clone());
+        Ok((surface_id, window, pixels_box))
     }
 
     pub fn redraw_window(&self, window: &Window) {
@@ -128,6 +126,7 @@ impl Connection {
                 window.pixels_box.read().frame_buffer_len(),
             );
         }
+        window.surface.destroy();
         if let Some(ref frame) = window.frame {
             unsafe {
                 munmap(
@@ -135,8 +134,10 @@ impl Connection {
                     frame.pixels_box.frame_buffer_len(),
                 );
             }
+            frame.surface.destroy();
         }
-        self.windows.write().remove(window.on_slab_offset);
+        window.xdg_toplevel.destroy();
+        self.windows.write().remove(&WindowId::from_wayland(window.surface.as_ref().id()));
         Ok(())
     }
 

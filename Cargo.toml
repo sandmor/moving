@@ -22,7 +22,6 @@ wayland-client = { version = "0", features = ["dlopen"] }
 wayland-protocols = { version = "0", features = ["client"] }
 tempfile = "3"
 flume = { version = "0.9", default-features = false }
-slab = "0.4"
 gethostname = "0.2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
@@ -31,3 +30,8 @@ flume = { version = "0.9", default-features = false }
 
 [target.'cfg(target_os = "redox")'.dependencies]
 orbclient = "0.3"
+
+[features]
+default = ["windows", "clipboard"]
+windows = []
+clipboard = []

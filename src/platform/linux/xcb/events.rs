@@ -27,7 +27,7 @@ impl Connection {
     fn manage_event(&self, event: XEvent) -> Option<Event> {
         match event {
             XEvent::ButtonPress(e) => Some(Event::WindowEvent {
-                window: WindowId(e.event),
+                window: WindowId::from_x11(e.event),
                 event: WindowEvent::MouseDown {
                     x: e.event_x as _,
                     y: e.event_y as _,
@@ -35,7 +35,7 @@ impl Connection {
                 },
             }),
             XEvent::ButtonRelease(e) => Some(Event::WindowEvent {
-                window: WindowId(e.event),
+                window: WindowId::from_x11(e.event),
                 event: WindowEvent::MouseUp {
                     x: e.event_x as _,
                     y: e.event_y as _,
@@ -64,7 +64,7 @@ impl Connection {
                 None
             }
             XEvent::MotionNotify(e) => Some(Event::WindowEvent {
-                window: WindowId(e.event),
+                window: WindowId::from_x11(e.event),
                 event: WindowEvent::MouseMove {
                     x: e.event_x as _,
                     y: e.event_y as _,
@@ -93,18 +93,18 @@ impl Connection {
                 let data = event.data.as_data32();
                 if event.format == 32 && data[0] == self.atoms.WM_DELETE_WINDOW {
                     return Some(Event::WindowEvent {
-                        window: WindowId(event.window),
+                        window: WindowId::from_x11(event.window),
                         event: WindowEvent::CloseRequested,
                     });
                 }
                 return None;
             }
             XEvent::Expose(e) if e.count == 0 => Some(Event::WindowEvent {
-                window: WindowId(e.window),
+                window: WindowId::from_x11(e.window),
                 event: WindowEvent::Dirted,
             }),
             XEvent::DestroyNotify(e) => Some(Event::WindowEvent {
-                window: WindowId(e.window),
+                window: WindowId::from_x11(e.window),
                 event: WindowEvent::Destroy,
             }),
             _ => None,

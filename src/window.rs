@@ -42,7 +42,7 @@ impl PixelsBox {
     pub fn put_pixel(&self, x: usize, y: usize, color: u32) {
         let width = self.size.width as usize;
         let offset = (y * width) + x;
-        if offset >= self.frame_buffer_len {
+        if offset * 4 >= self.frame_buffer_len {
             return;
         }
         unsafe {

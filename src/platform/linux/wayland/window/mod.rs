@@ -1,3 +1,6 @@
+mod frame;
+use frame::*;
+
 use super::Connection;
 use crate::{
     error::OSError,
@@ -21,12 +24,12 @@ use wayland_protocols::xdg_shell::client::xdg_toplevel::XdgToplevel;
 #[derive(Debug)]
 pub struct Window {
     xdg_toplevel: Main<XdgToplevel>,
-    pool: Main<WlShmPool>,
     surface: Main<WlSurface>,
     buf_x: i32,
     buf_y: i32,
     on_slab_offset: usize,
     pixels_box: Arc<RwLock<mwin::PixelsBox>>,
+    frame: Option<Frame>,
 }
 
 impl Connection {
@@ -41,24 +44,12 @@ impl Connection {
         ),
         OSError,
     > {
-        let buf_x: i32 = builder.width as i32;
-        let buf_y: i32 = builder.height as i32;
-
         let surface = self.compositor.create_surface();
         let xdg_surface = self.xdg_wm_base.get_xdg_surface(&surface);
         let xdg_toplevel = xdg_surface.get_toplevel();
 
         xdg_toplevel.set_title(builder.title.clone());
 
-        xdg_surface.quick_assign(|xdg_surface, event, _| {
-            use wayland_protocols::xdg_shell::client::xdg_surface::Event;
-            match event {
-                Event::Configure { serial } => {
-                    xdg_surface.ack_configure(serial);
-                }
-                _ => {}
-            }
-        });
         let top_level_ev_sender = self.events_sender.clone();
         xdg_toplevel.quick_assign(move |_, event, _| {
             use wayland_protocols::xdg_shell::client::xdg_toplevel::Event as WlEvent;
@@ -76,51 +67,27 @@ impl Connection {
                 _ => {}
             }
         });
-        let buf_len = (buf_x * buf_y) * 4;
-        surface.commit();
-        let tmp = tempfile::tempfile().expect("Unable to create a tempfile.");
-        tmp.set_len(buf_len as u64).unwrap();
 
-        let pool = self.shm.create_pool(
-            tmp.as_raw_fd(), // RawFd to the tempfile serving as shared memory
-            buf_len,         // size in bytes of the shared memory (4 bytes per pixel)
-        );
-        let buffer = pool.create_buffer(
-            0,                  // Start of the buffer in the pool
-            buf_x,              // width of the buffer in pixels
-            buf_y,              // height of the buffer in pixels
-            (buf_x * 4) as i32, // number of bytes between the beginning of two consecutive lines
-            Format::Argb8888,   // chosen encoding for the data
-        );
+        xdg_surface.quick_assign(|xdg_surface, event, _| {
+            use wayland_protocols::xdg_shell::client::xdg_surface::Event;
+            match event {
+                Event::Configure { serial } => {
+                    xdg_surface.ack_configure(serial);
+                }
+                _ => {}
+            }
+        });
 
-        self.event_queue
-            .lock()
-            .sync_roundtrip(&mut (), |_, _, _| { /* we ignore unfiltered messages */ })
-            .unwrap();
-
-        surface.attach(Some(&buffer), 0, 0);
         surface.commit();
 
-        self.event_queue
-            .lock()
-            .sync_roundtrip(&mut (), |_, _, _| { /* we ignore unfiltered messages */ })
-            .unwrap();
+        if builder.decorations {
+            return self.build_framed_window(builder, xdg_toplevel, xdg_surface, surface);
+        }
 
-        let frame_buffer_len = buf_len as usize;
+        let buf_x: i32 = builder.width as i32;
+        let buf_y: i32 = builder.height as i32;
 
-        let in_memory_addr = unsafe {
-            mmap(
-                null_mut(),
-                frame_buffer_len,
-                PROT_READ | PROT_WRITE,
-                MAP_SHARED,
-                tmp.as_raw_fd(),
-                0,
-            )
-        };
-        assert_ne!(in_memory_addr, MAP_FAILED);
-
-        let frame_buffer_ptr = NonNull::new(in_memory_addr as *mut u8).unwrap();
+        let (frame_buffer_ptr, frame_buffer_len) = self.setup_surface(&surface, buf_x, buf_y);
 
         let pixels_box = Arc::new(RwLock::new(mwin::PixelsBox::from_raw(
             Size::new(builder.width, builder.height),
@@ -130,12 +97,12 @@ impl Connection {
 
         let window = Arc::new(RwLock::new(WindowPlatformData::Wayland(Window {
             xdg_toplevel,
-            pool,
             surface,
             buf_x,
             buf_y,
             on_slab_offset: 0,
             pixels_box: pixels_box.clone(),
+            frame: None,
         })));
         let id = self.windows.write().insert(window.clone());
         window.write().wayland_mut().on_slab_offset = id;
@@ -145,6 +112,12 @@ impl Connection {
     pub fn redraw_window(&self, window: &Window) {
         window.surface.damage(0, 0, window.buf_x, window.buf_y);
         window.surface.commit();
+        if let Some(ref frame) = window.frame {
+            frame
+                .surface
+                .damage(0, 0, frame.frame_width, frame.header_bar_height);
+            frame.surface.commit();
+        }
     }
 
     pub fn destroy_window(&self, window: &mut Window) -> Result<(), OSError> {
@@ -157,5 +130,58 @@ impl Connection {
         }
         self.windows.write().remove(window.on_slab_offset);
         Ok(())
+    }
+
+    fn setup_surface(
+        &self,
+        buffer_surface: &Main<WlSurface>,
+        buf_width: i32,
+        buf_height: i32,
+    ) -> (NonNull<u8>, usize) {
+        let buf_len = (buf_width * buf_height) * 4;
+        let tmp = tempfile::tempfile().expect("Unable to create a tempfile.");
+        tmp.set_len(buf_len as u64).unwrap();
+
+        let pool = self.shm.create_pool(
+            tmp.as_raw_fd(), // RawFd to the tempfile serving as shared memory
+            buf_len,         // size in bytes of the shared memory (4 bytes per pixel)
+        );
+        let buffer = pool.create_buffer(
+            0,                      // Start of the buffer in the pool
+            buf_width,              // width of the buffer in pixels
+            buf_height,             // height of the buffer in pixels
+            (buf_width * 4) as i32, // number of bytes between the beginning of two consecutive lines
+            Format::Argb8888,       // chosen encoding for the data
+        );
+
+        self.event_queue
+            .lock()
+            .sync_roundtrip(&mut (), |_, _, _| { /* we ignore unfiltered messages */ })
+            .unwrap();
+
+        buffer_surface.attach(Some(&buffer), 0, 0);
+        buffer_surface.commit();
+
+        self.event_queue
+            .lock()
+            .sync_roundtrip(&mut (), |_, _, _| { /* we ignore unfiltered messages */ })
+            .unwrap();
+
+        let buf_len = buf_len as usize;
+
+        let in_memory_addr = unsafe {
+            mmap(
+                null_mut(),
+                buf_len,
+                PROT_READ | PROT_WRITE,
+                MAP_SHARED,
+                tmp.as_raw_fd(),
+                0,
+            )
+        };
+        assert_ne!(in_memory_addr, MAP_FAILED);
+
+        let buf_ptr = NonNull::new(in_memory_addr as *mut u8).unwrap();
+        (buf_ptr, buf_len)
     }
 }

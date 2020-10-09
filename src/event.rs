@@ -1,5 +1,5 @@
-use bitflags::bitflags;
 use crate::platform::WindowId;
+use bitflags::bitflags;
 
 bitflags! {
     pub struct MouseButtons: u8 {
@@ -23,8 +23,22 @@ pub enum WindowEvent {
     CloseRequested,
     Dirted,
     Destroy,
-    Resize { width: f64, height: f64 },
-    MouseUp { x: f64, y: f64, buttons: MouseButtons },
-    MouseDown { x: f64, y: f64, buttons: MouseButtons },
-    MouseMove { x: f64, y: f64 },
+    Resize {
+        width: f64,
+        height: f64,
+    },
+    MouseUp {
+        x: f64,
+        y: f64,
+        buttons: MouseButtons,
+    },
+    MouseDown {
+        x: f64,
+        y: f64,
+        buttons: MouseButtons,
+    },
+    MouseMove {
+        x: f64,
+        y: f64,
+    },
 }

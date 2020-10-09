@@ -10,7 +10,6 @@ use x11rb::{
     atom_manager,
     connection::Connection as XConnection,
     protocol::{
-        render::ConnectionExt as XRenderConnectionExt,
         shm::ConnectionExt as ShmConnectionExt,
         xproto::{self, ConnectionExt},
     },
@@ -42,7 +41,7 @@ atom_manager! {
 pub struct Connection {
     conn: XCBConnection,
     screen_num: usize,
-    shm: bool,     // Is shared memory buffers supported?
+    shm: bool, // Is shared memory buffers supported?
     atoms: AtomCollection,
     hidden_window: u32,
     clipboard_receiver_semaphore: Arc<Mutex<Option<bool>>>,

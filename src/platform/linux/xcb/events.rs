@@ -28,11 +28,19 @@ impl Connection {
         match event {
             XEvent::ButtonPress(e) => Some(Event::WindowEvent {
                 window: WindowId(e.event),
-                event: WindowEvent::MouseDown { x: e.event_x as _, y: e.event_y as _, buttons: MouseButtons::from_bits((e.detail & 0b111) as u8).unwrap() },
+                event: WindowEvent::MouseDown {
+                    x: e.event_x as _,
+                    y: e.event_y as _,
+                    buttons: MouseButtons::from_bits((e.detail & 0b111) as u8).unwrap(),
+                },
             }),
             XEvent::ButtonRelease(e) => Some(Event::WindowEvent {
                 window: WindowId(e.event),
-                event: WindowEvent::MouseUp { x: e.event_x as _, y: e.event_y as _, buttons: MouseButtons::from_bits((e.detail & 0b111) as u8).unwrap() },
+                event: WindowEvent::MouseUp {
+                    x: e.event_x as _,
+                    y: e.event_y as _,
+                    buttons: MouseButtons::from_bits((e.detail & 0b111) as u8).unwrap(),
+                },
             }),
             XEvent::ConfigureNotify(e) => {
                 if let Some(window) = self.windows.read().get(&WindowId::from_x11(e.window)) {
@@ -57,7 +65,10 @@ impl Connection {
             }
             XEvent::MotionNotify(e) => Some(Event::WindowEvent {
                 window: WindowId(e.event),
-                event: WindowEvent::MouseMove { x: e.event_x as _, y: e.event_y as _ },
+                event: WindowEvent::MouseMove {
+                    x: e.event_x as _,
+                    y: e.event_y as _,
+                },
             }),
             XEvent::SelectionNotify(e) => {
                 self.clipboard_receiver_semaphore

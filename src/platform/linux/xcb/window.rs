@@ -7,10 +7,10 @@ use crate::{
 use libc::{mmap, munmap, MAP_ANON, MAP_FAILED, MAP_PRIVATE, MAP_SHARED, PROT_READ, PROT_WRITE};
 use parking_lot::RwLock;
 use std::{
+    mem,
     os::unix::io::AsRawFd,
     ptr::{null_mut, NonNull},
     sync::Arc,
-    mem
 };
 use x11rb::{
     connection::{Connection as XConnection, RequestConnection},
@@ -143,9 +143,10 @@ impl Connection {
                 decorations: 0,
                 functions: 0,
                 input_mode: 0,
-                status: 0
+                status: 0,
             };
-            let hints = unsafe { mem::transmute::<MotifHints, [u8; mem::size_of::<MotifHints>()]>(hints) };
+            let hints =
+                unsafe { mem::transmute::<MotifHints, [u8; mem::size_of::<MotifHints>()]>(hints) };
             self.conn.change_property(
                 xproto::PropMode::Replace,
                 win_id,
@@ -153,7 +154,7 @@ impl Connection {
                 self.atoms._MOTIF_WM_HINTS,
                 32,
                 (hints.len() / 4) as u32,
-                &hints
+                &hints,
             )?;
         }
 

@@ -22,11 +22,8 @@ fn main() {
             }
         };
         match event {
-            WindowEvent::CloseRequested => {
-                *control_flow = ControlFlow::Exit
-            },
-            WindowEvent::MouseMove { x, y } => {
-            },
+            WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+            WindowEvent::MouseMove { x, y } => {}
             _ => {}
         }
     });

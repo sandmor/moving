@@ -34,9 +34,8 @@ impl PixelsBox {
         }
     }
 
-    pub fn pixels_mut(&self) -> impl Iterator<Item=(usize, usize, &mut u32)> {
-        todo!()
-    }
+    /*pub fn pixels_mut(&self) -> impl Iterator<Item=(usize, usize, &mut u32)> {
+    }*/
 
     /// Note that although it takes an immutable reference to self, it sets a pixel in the buffer
     /// this is made for simplify parallerization processes
@@ -49,6 +48,14 @@ impl PixelsBox {
         unsafe {
             *(self.frame_buffer_ptr.as_ptr() as *mut u32).offset(offset as isize) = color;
         }
+    }
+
+    pub(crate) fn frame_buffer_ptr(&self) -> NonNull<u8> {
+        self.frame_buffer_ptr
+    }
+
+    pub(crate) fn frame_buffer_len(&self) -> usize {
+        self.frame_buffer_len
     }
 }
 
@@ -109,7 +116,7 @@ impl WindowBuilder {
             width: 800.0,
             height: 600.0,
             title: String::new(),
-            decorations: true
+            decorations: true,
         }
     }
 

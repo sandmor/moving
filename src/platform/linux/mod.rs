@@ -4,8 +4,6 @@ mod xcb;
 use crate::error::OSError;
 use crate::{event::Event, window::*};
 use mime::Mime;
-use parking_lot::RwLock;
-use std::sync::Arc;
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct WindowId(pub(crate) u32);
@@ -15,9 +13,9 @@ impl WindowId {
         Self(x11)
     }
 
-    fn to_x11(&self) -> u32 {
+    /*fn to_x11(&self) -> u32 {
         self.0
-    }
+    }*/
 }
 
 #[derive(Debug)]

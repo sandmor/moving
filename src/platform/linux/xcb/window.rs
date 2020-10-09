@@ -83,6 +83,8 @@ impl Connection {
             .event_mask(
                 xproto::EventMask::Exposure
                     | xproto::EventMask::StructureNotify
+                    | xproto::EventMask::EnterWindow
+                    | xproto::EventMask::LeaveWindow
                     | xproto::EventMask::PointerMotion
                     | xproto::EventMask::ButtonPress
                     | xproto::EventMask::ButtonRelease

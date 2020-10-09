@@ -13,7 +13,7 @@ pub enum ButtonState {
     Pressed
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Event {
     WindowEvent {
         window: WindowId,
@@ -22,7 +22,7 @@ pub enum Event {
     MainEventsCleared,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum WindowEvent {
     CloseRequested,
     Dirted,

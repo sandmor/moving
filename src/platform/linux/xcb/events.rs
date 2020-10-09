@@ -26,22 +26,54 @@ impl Connection {
 
     fn manage_event(&self, event: XEvent) -> Option<Event> {
         match event {
-            /*XEvent::ButtonPress(e) => Some(Event::WindowEvent {
-                window: WindowId::from_x11(e.event),
-                event: WindowEvent::MouseDown {
-                    x: e.event_x as _,
-                    y: e.event_y as _,
-                    buttons: MouseButtons::from_bits((e.detail & 0b111) as u8).unwrap(),
-                },
-            }),
-            XEvent::ButtonRelease(e) => Some(Event::WindowEvent {
-                window: WindowId::from_x11(e.event),
-                event: WindowEvent::MouseUp {
-                    x: e.event_x as _,
-                    y: e.event_y as _,
-                    buttons: MouseButtons::from_bits((e.detail & 0b111) as u8).unwrap(),
-                },
-            }),*/
+            XEvent::ButtonPress(e) => {
+                let state = match event {
+                    XEvent::ButtonPress(_) => ButtonState::Pressed,
+                    XEvent::ButtonRelease(_) => ButtonState::Released,
+                    _ => unreachable!()
+                };
+                let mut immediate = None;
+                let mut flag = 1;
+                for i in 0..3 {
+                    let button = match i {
+                        0 => MouseButton::Left,
+                        1 => MouseButton::Right,
+                        2 => MouseButton::Middle,
+                        _ => unreachable!()
+                    };
+                    if e.detail & flag != 0 {
+                        if immediate.is_none() {
+                            immediate = Some(button);
+                        }
+                        else {
+                            self.events_queue.lock().push_front(Event::WindowEvent {
+                                window: WindowId::from_x11(e.event),
+                                event: WindowEvent::MouseButton {
+                                    x: e.event_x as _,
+                                    y: e.event_y as _,
+                                    button,
+                                    state
+                                },
+                            });
+                        }
+                    }
+                    flag <<= 1;
+                }
+                if let Some(button) = immediate {
+                    Some(Event::WindowEvent {
+                        window: WindowId::from_x11(e.event),
+                        event: WindowEvent::MouseButton {
+                            x: e.event_x as _,
+                            y: e.event_y as _,
+                            button,
+                            state
+                        },
+                    })
+                }
+                else {
+                    None
+                }
+            },
             XEvent::ConfigureNotify(e) => {
                 if let Some(window) = self.windows.read().get(&WindowId::from_x11(e.window)) {
                     let (width, height) = (window.read().xcb().width, window.read().xcb().height);
@@ -63,6 +95,20 @@ impl Connection {
                 }
                 None
             }
+            XEvent::EnterNotify(e) => Some(Event::WindowEvent {
+                window: WindowId::from_x11(e.event),
+                event: WindowEvent::MouseEnter {
+                    x: e.event_x as _,
+                    y: e.event_y as _,
+                },
+            }),
+            XEvent::LeaveNotify(e) => Some(Event::WindowEvent {
+                window: WindowId::from_x11(e.event),
+                event: WindowEvent::MouseEnter {
+                    x: e.event_x as _,
+                    y: e.event_y as _,
+                },
+            }),
             XEvent::MotionNotify(e) => Some(Event::WindowEvent {
                 window: WindowId::from_x11(e.event),
                 event: WindowEvent::MouseMove {

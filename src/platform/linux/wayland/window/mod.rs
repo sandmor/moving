@@ -128,11 +128,11 @@ impl Connection {
                 window.pixels_box.read().frame_buffer_len(),
             );
         }
-        if let Some(ref frame) = window.frame() {
+        if let Some(ref frame) = window.frame {
             unsafe {
                 munmap(
-                    frame.pixels_box.read().frame_buffer_ptr().as_ptr() as *mut _,
-                    frame.pixels_box.read().frame_buffer_len(),
+                    frame.pixels_box.frame_buffer_ptr().as_ptr() as *mut _,
+                    frame.pixels_box.frame_buffer_len(),
                 );
             }
         }

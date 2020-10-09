@@ -18,4 +18,5 @@ jobs:
           rust-version: ${{ matrix.rust }}
           override: true
       - uses: actions-rs/cargo@v1
-        run: cargo check --verbose
+        with:
+          command: test

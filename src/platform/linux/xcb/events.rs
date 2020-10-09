@@ -26,7 +26,7 @@ impl Connection {
 
     fn manage_event(&self, event: XEvent) -> Option<Event> {
         match event {
-            XEvent::ButtonPress(e) => Some(Event::WindowEvent {
+            /*XEvent::ButtonPress(e) => Some(Event::WindowEvent {
                 window: WindowId::from_x11(e.event),
                 event: WindowEvent::MouseDown {
                     x: e.event_x as _,
@@ -41,7 +41,7 @@ impl Connection {
                     y: e.event_y as _,
                     buttons: MouseButtons::from_bits((e.detail & 0b111) as u8).unwrap(),
                 },
-            }),
+            }),*/
             XEvent::ConfigureNotify(e) => {
                 if let Some(window) = self.windows.read().get(&WindowId::from_x11(e.window)) {
                     let (width, height) = (window.read().xcb().width, window.read().xcb().height);

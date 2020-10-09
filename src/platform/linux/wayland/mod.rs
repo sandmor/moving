@@ -2,6 +2,7 @@ mod window;
 pub use window::*;
 
 use crate::{error::OSError, event::*, platform::{WindowPlatformData, WindowId}};
+use atomic::Atomic;
 use parking_lot::{Mutex, RwLock};
 use std::{sync::Arc, collections::BTreeMap};
 use wayland_client::{
@@ -29,7 +30,7 @@ pub struct Connection {
     subcompositor: Main<WlSubcompositor>,
     xdg_wm_base: Main<XdgWmBase>,
     windows: RwLock<BTreeMap<WindowId, Arc<RwLock<WindowPlatformData>>>>,
-    mouse_on_surface: RwLock<Option<(u32, f64, f64)>>,
+    mouse_on_surface: Atomic<Option<(u32, f64, f64)>>,
 }
 
 impl Connection {
@@ -86,7 +87,25 @@ impl Connection {
                     filter_events_sender.send(Event::WindowEvent { window: WindowId::from_wayland(0), event: WindowEvent::MouseMove { x: surface_x, y: surface_y } }).unwrap();
                 }
                 wl_pointer::Event::Button { button, state, .. } => {
-                    println!("Button {} was {:?}.", button, state);
+                    if button & 0x110 != 0x110 {
+                        return;
+                    }
+                    let button = match button & 0xf {
+                        0 => MouseButton::Left,
+                        1 => MouseButton::Right,
+                        2 => MouseButton::Middle,
+                        _ => {
+                            return;
+                        }
+                    };
+                    let state = match state {
+                        wl_pointer::ButtonState::Released => ButtonState::Released,
+                        wl_pointer::ButtonState::Pressed => ButtonState::Pressed,
+                        _ => {
+                            return;
+                        }
+                    };
+                    filter_events_sender.send(Event::WindowEvent { window: WindowId::from_wayland(0), event: WindowEvent::MouseButton { x: 0.0, y: 0.0, state, button } }).unwrap();
                 }
                 _ => {}
             },
@@ -118,7 +137,7 @@ impl Connection {
             subcompositor,
             xdg_wm_base,
             windows: RwLock::new(BTreeMap::new()),
-            mouse_on_surface: RwLock::new(None),
+            mouse_on_surface: Atomic::new(None),
         })
     }
 
@@ -126,7 +145,7 @@ impl Connection {
         if let Ok(mut event) = self.events_receiver.try_recv() {
             return match event {
                 Event::WindowEvent { window, event: WindowEvent::MouseEnter { x, y } } => {
-                    self.mouse_on_surface.write().replace((window.to_wayland(), x, y));
+                    self.mouse_on_surface.store(Some((window.to_wayland(), x, y)), atomic::Ordering::Relaxed);
                     if self.windows.read().get(&window).is_some() {
                         Ok(Some(event))
                     }
@@ -135,10 +154,10 @@ impl Connection {
                     }
                 },
                 Event::WindowEvent { window, event: WindowEvent::MouseLeave { ref mut x, ref mut y } } => {
-                    match self.mouse_on_surface.read().as_ref() {
-                        Some((surface, rx, ry)) if *surface == window.to_wayland() => {
-                            *x = *rx;
-                            *y = *ry;
+                    match self.mouse_on_surface.load(atomic::Ordering::Relaxed) {
+                        Some((surface, rx, ry)) if surface == window.to_wayland() => {
+                            *x = rx;
+                            *y = ry;
                         },
                         _ => {
                             return Ok(None);
@@ -152,11 +171,29 @@ impl Connection {
                     }
                 },
                 Event::WindowEvent { ref mut window, event: WindowEvent::MouseMove { x, y } } => {
-                    let surface = match self.mouse_on_surface.read().as_ref() {
-                        Some((surface, _, _)) => *surface,
+                    let surface = match self.mouse_on_surface.load(atomic::Ordering::Relaxed) {
+                        Some((surface, _, _)) => surface,
                         None => return Ok(None)
                     };
-                    self.mouse_on_surface.write().replace((surface, x, y));
+                    self.mouse_on_surface.store(Some((surface, x, y)), atomic::Ordering::Relaxed);
+                    if self.windows.read().get(&WindowId::from_wayland(surface)).is_some() {
+                        *window = WindowId::from_wayland(surface);
+                        Ok(Some(event))
+                    }
+                    else {
+                        Ok(None)
+                    }
+                },
+                Event::WindowEvent { ref mut window, event: WindowEvent::MouseButton { ref mut x, ref mut y, button, state } } => {
+                    let surface = match self.mouse_on_surface.load(atomic::Ordering::Relaxed) {
+                        Some((surface, rx, ry)) => {
+                            *x = rx;
+                            *y = ry;
+                            surface
+                        },
+                        None => return Ok(None)
+                    };
+                    self.mouse_on_surface.store(Some((surface, *x, *y)), atomic::Ordering::Relaxed);
                     if self.windows.read().get(&WindowId::from_wayland(surface)).is_some() {
                         *window = WindowId::from_wayland(surface);
                         Ok(Some(event))

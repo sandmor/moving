@@ -1,12 +1,16 @@
 use crate::platform::WindowId;
-use bitflags::bitflags;
 
-bitflags! {
-    pub struct MouseButtons: u8 {
-        const LEFT_BUTTON = 0b00000001;
-        const RIGHT_BUTTON = 0b00000010;
-        const MIDDLE_BUTTON = 0b00000100;
-    }
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub enum MouseButton {
+    Left,
+    Right,
+    Middle
+}
+
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub enum ButtonState {
+    Released,
+    Pressed
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -27,15 +31,11 @@ pub enum WindowEvent {
         width: f64,
         height: f64,
     },
-    MouseUp {
+    MouseButton {
         x: f64,
         y: f64,
-        buttons: MouseButtons,
-    },
-    MouseDown {
-        x: f64,
-        y: f64,
-        buttons: MouseButtons,
+        state: ButtonState,
+        button: MouseButton
     },
     MouseMove {
         x: f64,

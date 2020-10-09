@@ -128,6 +128,14 @@ impl Connection {
                 window.pixels_box.read().frame_buffer_len(),
             );
         }
+        if let Some(ref frame) = window.frame() {
+            unsafe {
+                munmap(
+                    frame.pixels_box.read().frame_buffer_ptr().as_ptr() as *mut _,
+                    frame.pixels_box.read().frame_buffer_len(),
+                );
+            }
+        }
         self.windows.write().remove(window.on_slab_offset);
         Ok(())
     }

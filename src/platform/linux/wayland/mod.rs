@@ -1,19 +1,25 @@
+#[cfg(feature = "windows")]
 mod window;
+#[cfg(feature = "windows")]
 pub use window::*;
 
+mod data_exchange;
 use crate::{
     error::OSError,
     event::*,
     platform::{WindowId, WindowPlatformData},
 };
+use data_exchange::DataOffer;
 use atomic::Atomic;
+use mime::Mime;
 use parking_lot::{Mutex, RwLock};
-use std::{collections::BTreeMap, sync::Arc};
+use std::{collections::BTreeMap, sync::Arc, rc::Rc, cell::RefCell};
 use wayland_client::{
     event_enum,
     protocol::{
         wl_compositor::WlCompositor, wl_pointer, wl_seat::WlSeat, wl_shm::WlShm,
-        wl_subcompositor::WlSubcompositor,
+        wl_subcompositor::WlSubcompositor, wl_data_device_manager::WlDataDeviceManager,
+        wl_data_offer::WlDataOffer
     },
     Display, EventQueue, Filter, GlobalManager, Main,
 };
@@ -34,6 +40,7 @@ pub struct Connection {
     xdg_wm_base: Main<XdgWmBase>,
     windows: RwLock<BTreeMap<WindowId, Arc<RwLock<WindowPlatformData>>>>,
     mouse_on_surface: Atomic<Option<(u32, f64, f64)>>,
+    data_offers: Rc<RefCell<BTreeMap<u32, DataOffer>>>
 }
 
 impl Connection {
@@ -148,20 +155,34 @@ impl Connection {
         });
 
         let mut pointer_created = false;
-        globals
-            .instantiate_exact::<WlSeat>(1)
-            .unwrap()
-            .quick_assign(move |seat, event, _| {
-                use wayland_client::protocol::wl_seat::{Capability, Event as SeatEvent};
+        let seat = globals.instantiate_exact::<WlSeat>(1).unwrap();
+        
+        seat.quick_assign(move |seat, event, _| {
+            use wayland_client::protocol::wl_seat::{Capability, Event as SeatEvent};
 
-                if let SeatEvent::Capabilities { capabilities } = event {
-                    if !pointer_created && capabilities.contains(Capability::Pointer) {
-                        // create the pointer only once
-                        pointer_created = true;
-                        seat.get_pointer().assign(common_filter.clone());
-                    }
+            if let SeatEvent::Capabilities { capabilities } = event {
+                if !pointer_created && capabilities.contains(Capability::Pointer) {
+                    // create the pointer only once
+                    pointer_created = true;
+                    seat.get_pointer().assign(common_filter.clone());
                 }
-            });
+            }
+        });
+
+        let data_dev_mngr = globals.instantiate_exact::<WlDataDeviceManager>(1).unwrap();
+        let data_dev = data_dev_mngr.get_data_device(&seat);
+        let data_offers = Rc::new(RefCell::new(BTreeMap::new()));
+        let dev_data_offers = data_offers.clone();
+        data_dev.quick_assign(move |_, event, _| {
+            use wayland_client::protocol::wl_data_device::Event;
+            match event {
+                Event::DataOffer { id: data_offer } => {
+                    let id = data_offer.as_ref().id();
+                    dev_data_offers.borrow_mut().insert(id, DataOffer::from_wl(data_offer));
+                },
+                _ => {}
+            }
+        });
 
         Ok(Self {
             event_queue: Mutex::new(event_queue),
@@ -173,6 +194,7 @@ impl Connection {
             xdg_wm_base,
             windows: RwLock::new(BTreeMap::new()),
             mouse_on_surface: Atomic::new(None),
+            data_offers
         })
     }
 

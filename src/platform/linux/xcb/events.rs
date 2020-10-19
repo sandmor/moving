@@ -26,6 +26,26 @@ impl Connection {
 
     fn manage_event(&self, event: XEvent) -> Option<Event> {
         match event {
+            XEvent::SelectionNotify(e) => {
+                self.clipboard_receiver_semaphore
+                    .lock()
+                    .replace(e.property != NONE);
+            }
+            XEvent::SelectionRequest(e) => {
+                self.process_selection_request(e).unwrap();
+            }
+            XEvent::PropertyNotify(e)
+                if e.window == self.hidden_window
+                    && e.atom == self.atoms.CLIPBOARD_RECEIVER
+                    && e.state == xproto::Property::NewValue =>
+            {
+                self.clipboard_data_chunk_received
+                    .store(true, Ordering::SeqCst);
+            }
+            _ => {}
+        }
+        #[cfg(feature = "windows")]
+        match event {
             XEvent::ButtonPress(e) => {
                 let state = match event {
                     XEvent::ButtonPress(_) => ButtonState::Pressed,
@@ -114,25 +134,6 @@ impl Connection {
                     y: e.event_y as _,
                 },
             }),
-            XEvent::SelectionNotify(e) => {
-                self.clipboard_receiver_semaphore
-                    .lock()
-                    .replace(e.property != NONE);
-                None
-            }
-            XEvent::SelectionRequest(e) => {
-                self.process_selection_request(e).unwrap();
-                None
-            }
-            XEvent::PropertyNotify(e)
-                if e.window == self.hidden_window
-                    && e.atom == self.atoms.CLIPBOARD_RECEIVER
-                    && e.state == xproto::Property::NewValue =>
-            {
-                self.clipboard_data_chunk_received
-                    .store(true, Ordering::SeqCst);
-                None
-            }
             XEvent::ClientMessage(event) => {
                 let data = event.data.as_data32();
                 if event.format == 32 && data[0] == self.atoms.WM_DELETE_WINDOW {
@@ -153,6 +154,8 @@ impl Connection {
             }),
             _ => None,
         }
+        #[cfg(not(feature = "windows"))]
+        None
     }
 
     pub fn run_event_for_queue(&self) -> Result<(), OSError> {

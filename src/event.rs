@@ -1,5 +1,6 @@
 use crate::platform::WindowId;
 
+#[cfg(feature = "windows")]
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum MouseButton {
     Left,
@@ -9,6 +10,7 @@ pub enum MouseButton {
     Extra,
 }
 
+#[cfg(feature = "windows")]
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum ButtonState {
     Released,
@@ -17,6 +19,7 @@ pub enum ButtonState {
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Event {
+    #[cfg(feature = "windows")]
     WindowEvent {
         window: WindowId,
         event: WindowEvent,
@@ -24,6 +27,7 @@ pub enum Event {
     MainEventsCleared,
 }
 
+#[cfg(feature = "windows")]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum WindowEvent {
     CloseRequested,

@@ -21,6 +21,7 @@ impl EventLoop {
         }
     }
 
+    #[cfg(feature = "windows")]
     pub(crate) fn create_window(&self, builder: WindowBuilder) -> Result<Window, OSError> {
         let window = CONNECTION.create_window(builder)?;
 
@@ -40,6 +41,7 @@ impl EventLoop {
         while cf != ControlFlow::Exit {
             let event = CONNECTION.poll_event().unwrap();
             if let Some(event) = event {
+                #[cfg(feature = "windows")]
                 if let Event::WindowEvent { window, ref event } = event {
                     match event {
                         WindowEvent::Destroy => {
@@ -66,6 +68,7 @@ impl EventLoop {
             }
             thread::yield_now();
         }
+        #[cfg(feature = "windows")]
         for window in self.windows.borrow().values() {
             CONNECTION.destroy_window(&mut window.write()).unwrap();
         }

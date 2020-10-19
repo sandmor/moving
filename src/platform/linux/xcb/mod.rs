@@ -102,6 +102,8 @@ impl Drop for Connection {
 mod clipboard;
 mod errors;
 mod events;
+#[cfg(feature = "windows")]
 mod window;
 
+#[cfg(feature = "windows")]
 pub use self::window::*;

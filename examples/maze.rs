@@ -281,22 +281,18 @@ fn main() {
                             if y >= h {
                                 break;
                             }
-                            let mut offset = (y * w + px) * 4;
-                            for _ in 0..maze_cell {
+                            for x in px..px+maze_cell {
+                                let color;
                                 if cell {
-                                    frame_buffer[offset] = 0;
-                                    frame_buffer[offset + 1] = 0;
-                                    frame_buffer[offset + 2] = 0;
-                                } else if traveling_path_cells.contains(&(x, y)) {
-                                    frame_buffer[offset] = 0;
-                                    frame_buffer[offset + 1] = 255;
-                                    frame_buffer[offset + 2] = 255;
-                                } else {
-                                    frame_buffer[offset] = 255;
-                                    frame_buffer[offset + 1] = 255;
-                                    frame_buffer[offset + 2] = 255;
+                                    color = 0xff000000;
                                 }
-                                offset += 4;
+                                else if traveling_path_cells.contains(&(x, y)) {
+                                    color = 0xff00ffff;
+                                }
+                                else {
+                                    color = 0xffffffff;
+                                }
+                                surface.put_u32_pixel(x, y, color);
                             }
                         }
                     }

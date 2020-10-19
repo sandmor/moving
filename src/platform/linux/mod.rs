@@ -86,6 +86,24 @@ impl Connection {
         }
     }
 
+    // Clipboard
+    pub fn load_from_clipboard(&self, media_type: Mime) -> Result<Option<Vec<u8>>, OSError> {
+        match self {
+            Self::Wayland(_) => todo!(),
+            Self::Xcb(xcb) => xcb.load_from_clipboard(media_type),
+        }
+    }
+
+    pub fn store_on_clipboard(&self, media_type: mime::Mime, data: &[u8]) -> Result<(), OSError> {
+        match self {
+            Self::Wayland(_) => todo!(),
+            Self::Xcb(xcb) => xcb.store_on_clipboard(media_type, data),
+        }
+    }
+}
+
+#[cfg(feature = "windows")]
+impl Connection {
     pub fn create_window(&self, builder: WindowBuilder) -> Result<Window, OSError> {
         match self {
             Self::Wayland(wl) => wl.create_window(builder),
@@ -104,21 +122,6 @@ impl Connection {
         match self {
             Self::Wayland(wl) => wl.redraw_window(window.platform_data.read().wayland()),
             Self::Xcb(xcb) => xcb.redraw_window(window.platform_data.read().xcb()),
-        }
-    }
-
-    // Clipboard
-    pub fn load_from_clipboard(&self, media_type: Mime) -> Result<Option<Vec<u8>>, OSError> {
-        match self {
-            Self::Wayland(_) => todo!(),
-            Self::Xcb(xcb) => xcb.load_from_clipboard(media_type),
-        }
-    }
-
-    pub fn store_on_clipboard(&self, media_type: mime::Mime, data: &[u8]) -> Result<(), OSError> {
-        match self {
-            Self::Wayland(_) => todo!(),
-            Self::Xcb(xcb) => xcb.store_on_clipboard(media_type, data),
         }
     }
 }

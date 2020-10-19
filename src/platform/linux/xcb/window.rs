@@ -1,16 +1,22 @@
 use super::Connection;
 use crate::{
+    dpi::LogicalSize,
     error::OSError,
     platform::{WindowId, WindowPlatformData},
-    window as mwin, Size,
+    surface::{self, Surface},
+    window as mwin,
 };
+use atomic::Atomic;
 use libc::{mmap, munmap, MAP_ANON, MAP_FAILED, MAP_PRIVATE, MAP_SHARED, PROT_READ, PROT_WRITE};
 use parking_lot::RwLock;
 use std::{
     mem,
     os::unix::io::AsRawFd,
-    ptr::{null_mut, NonNull},
-    sync::Arc,
+    ptr::null_mut,
+    sync::{
+        atomic::{AtomicPtr, Ordering},
+        Arc,
+    },
 };
 use x11rb::{
     connection::{Connection as XConnection, RequestConnection},
@@ -40,7 +46,6 @@ pub enum WindowBufferKind {
 
 #[derive(Debug)]
 pub struct Window {
-    buffer: &'static mut [u8],
     buffer_kind: WindowBufferKind,
     pixmap: xproto::Pixmap,
     gcontext: xproto::Gcontext,
@@ -49,21 +54,11 @@ pub struct Window {
     depth: u8,
     pub(super) width: u16,
     pub(super) height: u16,
-    pixels_box: Arc<RwLock<mwin::PixelsBox>>,
+    shared_surface_data: Arc<(AtomicPtr<u8>, Atomic<surface::SharedData>)>,
 }
 
 impl Connection {
-    pub fn create_window(
-        &self,
-        builder: mwin::WindowBuilder,
-    ) -> Result<
-        (
-            u32,
-            Arc<RwLock<WindowPlatformData>>,
-            Arc<RwLock<mwin::PixelsBox>>,
-        ),
-        OSError,
-    > {
+    pub fn create_window(&self, builder: mwin::WindowBuilder) -> Result<mwin::Window, OSError> {
         let (depth, visual_id) = self.choose_visual(self.screen_num)?;
 
         let screen = &self.conn.setup().roots[self.screen_num];
@@ -167,12 +162,15 @@ impl Connection {
         self.conn.map_window(win_id)?;
         self.conn.flush()?;
 
-        let (pixmap, buffer, buffer_kind, pixels_box) =
-            self.create_window_buffer(win_id, depth, builder.width, builder.height)?;
-        let pixels_box = Arc::new(RwLock::new(pixels_box));
+        let (pixmap, buffer_kind, surface) =
+            self.create_window_buffer(win_id, depth, width as u32, height as u32)?;
+
+        let logical_size = Arc::new(Atomic::new(LogicalSize {
+            w: width as f64,
+            h: height as f64,
+        }));
 
         let window = Arc::new(RwLock::new(WindowPlatformData::Xcb(Window {
-            buffer,
             buffer_kind,
             pixmap,
             gcontext,
@@ -181,26 +179,31 @@ impl Connection {
             depth,
             width,
             height,
-            pixels_box: pixels_box.clone(),
+            shared_surface_data: surface.shared(),
         })));
 
         self.windows
             .write()
             .insert(WindowId::from_x11(win_id), window.clone());
 
-        Ok((win_id, window, pixels_box))
+        Ok(mwin::Window {
+            id: WindowId::from_x11(win_id),
+            surface,
+            logical_size,
+            dpi: Arc::new(Atomic::new(1.0)), // TODO: Implement DPI
+            platform_data: window,
+        })
     }
 
     pub fn create_window_buffer(
         &self,
         win_id: u32,
         depth: u8,
-        width: f64,
-        height: f64,
-    ) -> Result<(u32, &'static mut [u8], WindowBufferKind, mwin::PixelsBox), OSError> {
+        width: u32,
+        height: u32,
+    ) -> Result<(u32, WindowBufferKind, Surface), OSError> {
         let pixmap = self.conn.generate_id()?;
 
-        let buffer;
         let buffer_kind;
 
         let frame_buffer_ptr;
@@ -231,11 +234,8 @@ impl Connection {
                 return Err(x11rb::errors::ConnectionError::InsufficientMemory.into());
             }
 
-            frame_buffer_ptr = NonNull::new(addr as *mut u8).unwrap();
+            frame_buffer_ptr = addr as *mut u8;
             frame_buffer_len = segment_size as usize;
-            buffer = unsafe {
-                std::slice::from_raw_parts_mut(frame_buffer_ptr.as_ptr(), frame_buffer_len)
-            };
 
             buffer_kind = WindowBufferKind::Shm(shmseg);
 
@@ -270,21 +270,24 @@ impl Connection {
                 return Err(x11rb::errors::ConnectionError::InsufficientMemory.into());
             }
 
-            frame_buffer_ptr = NonNull::new(addr as *mut u8).unwrap();
-
-            buffer = unsafe {
-                std::slice::from_raw_parts_mut(frame_buffer_ptr.as_ptr(), frame_buffer_len)
-            };
+            frame_buffer_ptr = addr as *mut u8;
 
             buffer_kind = WindowBufferKind::Native { depth };
         }
+        let frame_buffer_ptr = AtomicPtr::new(frame_buffer_ptr);
+        let shared_data = Atomic::new(surface::SharedData {
+            buffer_len: frame_buffer_len,
+            width,
+            height,
+        });
+
+        let shared = Arc::new((frame_buffer_ptr, shared_data));
 
         self.conn.flush()?;
         Ok((
             pixmap,
-            buffer,
             buffer_kind,
-            mwin::PixelsBox::from_raw(Size::new(width, height), frame_buffer_ptr, frame_buffer_len),
+            Surface::new(surface::Format::Argb8888, shared),
         ))
     }
 
@@ -296,7 +299,14 @@ impl Connection {
             }
         }
         unsafe {
-            munmap(window.buffer.as_mut_ptr() as *mut _, window.buffer.len());
+            munmap(
+                window.shared_surface_data.0.load(Ordering::SeqCst) as *mut _,
+                window
+                    .shared_surface_data
+                    .1
+                    .load(Ordering::SeqCst)
+                    .buffer_len,
+            );
         }
         self.conn.free_pixmap(window.pixmap)?;
         self.conn.destroy_window(window.win_id)?;
@@ -310,6 +320,16 @@ impl Connection {
     pub fn redraw_window(&self, window: &Window) {
         match window.buffer_kind {
             WindowBufferKind::Native { depth } => {
+                let buffer = unsafe {
+                    std::slice::from_raw_parts_mut(
+                        window.shared_surface_data.0.load(Ordering::SeqCst),
+                        window
+                            .shared_surface_data
+                            .1
+                            .load(Ordering::SeqCst)
+                            .buffer_len,
+                    )
+                };
                 self.conn
                     .put_image(
                         xproto::ImageFormat::ZPixmap,
@@ -321,7 +341,7 @@ impl Connection {
                         0,
                         0,
                         depth,
-                        window.buffer,
+                        buffer,
                     )
                     .unwrap();
 
@@ -371,19 +391,26 @@ impl Connection {
             }
         }
         unsafe {
-            munmap(window.buffer.as_mut_ptr() as *mut _, window.buffer.len());
+            munmap(
+                window.shared_surface_data.0.load(Ordering::SeqCst) as *mut _,
+                window
+                    .shared_surface_data
+                    .1
+                    .load(Ordering::SeqCst)
+                    .buffer_len,
+            );
         }
         self.conn.free_pixmap(window.pixmap)?;
-        let (pixmap, buffer, buffer_kind, pixels_box) = self.create_window_buffer(
+        let (pixmap, buffer_kind, new_surface) = self.create_window_buffer(
             window.win_id,
             window.depth,
-            new_width as f64,
-            new_height as f64,
+            new_width as u32,
+            new_height as u32,
         )?;
+
         window.pixmap = pixmap;
-        window.buffer = buffer;
+        window.shared_surface_data = new_surface.shared().clone();
         window.buffer_kind = buffer_kind;
-        *window.pixels_box.write() = pixels_box;
         window.width = new_width;
         window.height = new_height;
         Ok(())

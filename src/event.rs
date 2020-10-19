@@ -4,13 +4,15 @@ use crate::platform::WindowId;
 pub enum MouseButton {
     Left,
     Right,
-    Middle
+    Middle,
+    Side,
+    Extra,
 }
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum ButtonState {
     Released,
-    Pressed
+    Pressed,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -35,7 +37,7 @@ pub enum WindowEvent {
         x: f64,
         y: f64,
         state: ButtonState,
-        button: MouseButton
+        button: MouseButton,
     },
     MouseMove {
         x: f64,

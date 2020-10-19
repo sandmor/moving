@@ -1,100 +1,40 @@
 use crate::{
+    dpi,
     error::OSError,
     event_loop::EventLoop,
     platform::{WindowId, WindowPlatformData},
-    Size, CONNECTION,
+    surface, CONNECTION,
 };
+use atomic::Atomic;
 use parking_lot::RwLock;
-use std::{ptr::NonNull, sync::Arc};
-
-#[derive(Debug)]
-pub(crate) struct WindowInner {
-    pub size: Size,
-    pub frame_buffer_ptr: *mut u8,
-    pub frame_buffer_len: usize,
-}
-
-#[derive(Debug)]
-pub struct PixelsBox {
-    size: Size,
-    frame_buffer_ptr: NonNull<u8>,
-    frame_buffer_len: usize,
-}
-
-impl PixelsBox {
-    pub(crate) fn from_raw(
-        size: Size,
-        frame_buffer_ptr: NonNull<u8>,
-        frame_buffer_len: usize,
-    ) -> Self {
-        Self {
-            size,
-            frame_buffer_ptr,
-            frame_buffer_len,
-        }
-    }
-
-    /*pub fn pixels_mut(&self) -> impl Iterator<Item=(usize, usize, &mut u32)> {
-    }*/
-
-    /// Note that although it takes an immutable reference to self, it sets a pixel in the buffer
-    /// this is made for simplify parallerization processes
-    pub fn put_pixel(&self, x: usize, y: usize, color: u32) {
-        let width = self.size.width as usize;
-        let offset = (y * width) + x;
-        if offset * 4 >= self.frame_buffer_len {
-            return;
-        }
-        unsafe {
-            *(self.frame_buffer_ptr.as_ptr() as *mut u32).offset(offset as isize) = color;
-        }
-    }
-
-    pub(crate) fn frame_buffer_ptr(&self) -> NonNull<u8> {
-        self.frame_buffer_ptr
-    }
-
-    pub(crate) fn frame_buffer_len(&self) -> usize {
-        self.frame_buffer_len
-    }
-}
-
-unsafe impl Sync for PixelsBox {}
-unsafe impl Send for PixelsBox {}
+use std::sync::{atomic::Ordering, Arc};
 
 /// Be careful the windows support transparency and are fully transparent at the start
+#[derive(Debug)]
 pub struct Window {
     pub(crate) id: WindowId,
-    pub(crate) pixels_box: Arc<RwLock<PixelsBox>>,
+    pub(crate) surface: surface::Surface,
+    pub(crate) logical_size: Arc<Atomic<dpi::LogicalSize>>,
+    pub(crate) dpi: Arc<Atomic<dpi::Dpi>>,
     // This is used to store platform-specific information
     pub(crate) platform_data: Arc<RwLock<WindowPlatformData>>,
 }
 
 impl Window {
-    pub fn size(&self) -> Size {
-        self.pixels_box.read().size
+    pub fn dpi(&self) -> dpi::Dpi {
+        self.dpi.load(Ordering::SeqCst)
     }
 
-    pub fn width(&self) -> f64 {
-        self.pixels_box.read().size.width
+    pub fn logical_size(&self) -> dpi::LogicalSize {
+        self.logical_size.load(Ordering::SeqCst)
     }
 
-    pub fn height(&self) -> f64 {
-        self.pixels_box.read().size.height
+    pub fn physical_size(&self) -> dpi::PhysicalSize {
+        self.logical_size().to_physical(self.dpi())
     }
 
-    pub fn frame_buffer(&self) -> &mut [u8] {
-        let pixels_box = self.pixels_box.read();
-        unsafe {
-            std::slice::from_raw_parts_mut(
-                pixels_box.frame_buffer_ptr.as_ptr(),
-                pixels_box.frame_buffer_len,
-            )
-        }
-    }
-
-    pub fn pixels_box(&self) -> Arc<RwLock<PixelsBox>> {
-        self.pixels_box.clone()
+    pub fn surface(&self) -> surface::Surface {
+        self.surface.clone()
     }
 
     pub fn redraw(&self) {
@@ -108,6 +48,7 @@ pub struct WindowBuilder {
     pub(crate) height: f64,
     pub(crate) title: String,
     pub(crate) decorations: bool,
+    pub(crate) surface_format: surface::Format,
 }
 
 impl WindowBuilder {
@@ -117,6 +58,7 @@ impl WindowBuilder {
             height: 600.0,
             title: String::new(),
             decorations: true,
+            surface_format: surface::Format::default(),
         }
     }
 
@@ -143,6 +85,11 @@ impl WindowBuilder {
     pub fn with_size(mut self, width: f64, height: f64) -> Self {
         self.width = width;
         self.height = height;
+        self
+    }
+
+    pub fn with_surface_format(mut self, format: surface::Format) -> Self {
+        self.surface_format = format;
         self
     }
 

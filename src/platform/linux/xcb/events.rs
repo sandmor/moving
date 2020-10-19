@@ -30,7 +30,7 @@ impl Connection {
                 let state = match event {
                     XEvent::ButtonPress(_) => ButtonState::Pressed,
                     XEvent::ButtonRelease(_) => ButtonState::Released,
-                    _ => unreachable!()
+                    _ => unreachable!(),
                 };
                 let mut immediate = None;
                 let mut flag = 1;
@@ -39,20 +39,19 @@ impl Connection {
                         0 => MouseButton::Left,
                         1 => MouseButton::Right,
                         2 => MouseButton::Middle,
-                        _ => unreachable!()
+                        _ => unreachable!(),
                     };
                     if e.detail & flag != 0 {
                         if immediate.is_none() {
                             immediate = Some(button);
-                        }
-                        else {
+                        } else {
                             self.events_queue.lock().push_front(Event::WindowEvent {
                                 window: WindowId::from_x11(e.event),
                                 event: WindowEvent::MouseButton {
                                     x: e.event_x as _,
                                     y: e.event_y as _,
                                     button,
-                                    state
+                                    state,
                                 },
                             });
                         }
@@ -66,14 +65,13 @@ impl Connection {
                             x: e.event_x as _,
                             y: e.event_y as _,
                             button,
-                            state
+                            state,
                         },
                     })
-                }
-                else {
+                } else {
                     None
                 }
-            },
+            }
             XEvent::ConfigureNotify(e) => {
                 if let Some(window) = self.windows.read().get(&WindowId::from_x11(e.window)) {
                     let (width, height) = (window.read().xcb().width, window.read().xcb().height);

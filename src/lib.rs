@@ -3,9 +3,11 @@ use lazy_static::lazy_static;
 mod platform;
 
 pub mod clipboard;
+pub mod dpi;
 pub mod error;
 pub mod event;
 pub mod event_loop;
+pub mod surface;
 pub mod window;
 
 pub type Rect = euclid::Rect<f64, ()>;

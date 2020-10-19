@@ -4,7 +4,6 @@ use x11rb::errors::*;
 impl From<ConnectionError> for OSError {
     fn from(e: ConnectionError) -> Self {
         match e {
-            ConnectionError::UnknownError => OSError::Unknown,
             ConnectionError::UnsupportedExtension => unreachable!(),
             ConnectionError::MaximumRequestLengthExceeded => OSError::Other(
                 "a request larger than the maximum X11 server request length was sent".to_owned(),
@@ -12,9 +11,10 @@ impl From<ConnectionError> for OSError {
             ConnectionError::FDPassingFailed => {
                 OSError::Other("failed to pass file descriptor to the X11 server".to_owned())
             }
-            ConnectionError::ParseError => OSError::Parse,
+            ConnectionError::ParseError(_) => OSError::Parse,
             ConnectionError::InsufficientMemory => OSError::InsufficientMemory,
             ConnectionError::IOError(io) => OSError::IO(io),
+            _ => OSError::Unknown,
         }
     }
 }

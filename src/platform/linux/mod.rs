@@ -88,22 +88,8 @@ impl Connection {
 
     pub fn create_window(&self, builder: WindowBuilder) -> Result<Window, OSError> {
         match self {
-            Self::Wayland(wl) => {
-                wl.create_window(builder)
-                    .map(|(win_id, platform_data, pixels_box)| Window {
-                        id: WindowId::from_wayland(win_id),
-                        pixels_box,
-                        platform_data,
-                    })
-            }
-            Self::Xcb(xcb) => {
-                xcb.create_window(builder)
-                    .map(|(win_id, platform_data, pixels_box)| Window {
-                        id: WindowId::from_x11(win_id),
-                        pixels_box,
-                        platform_data,
-                    })
-            }
+            Self::Wayland(wl) => wl.create_window(builder),
+            Self::Xcb(xcb) => xcb.create_window(builder),
         }
     }
 

@@ -1,10 +1,14 @@
 mod window;
 pub use window::*;
 
-use crate::{error::OSError, event::*, platform::{WindowPlatformData, WindowId}};
+use crate::{
+    error::OSError,
+    event::*,
+    platform::{WindowId, WindowPlatformData},
+};
 use atomic::Atomic;
 use parking_lot::{Mutex, RwLock};
-use std::{sync::Arc, collections::BTreeMap};
+use std::{collections::BTreeMap, sync::Arc};
 use wayland_client::{
     event_enum,
     protocol::{
@@ -21,7 +25,6 @@ event_enum!(
 );
 
 pub struct Connection {
-    display: Display,
     event_queue: Mutex<EventQueue>,
     events_sender: flume::Sender<Event>,
     events_receiver: flume::Receiver<Event>,
@@ -74,17 +77,38 @@ impl Connection {
                     surface_y,
                     ..
                 } => {
-                    filter_events_sender.send(Event::WindowEvent { window: WindowId::from_wayland(surface.as_ref().id()), event: WindowEvent::MouseEnter { x: surface_x, y: surface_y } }).unwrap();
+                    filter_events_sender
+                        .send(Event::WindowEvent {
+                            window: WindowId::from_wayland(surface.as_ref().id()),
+                            event: WindowEvent::MouseEnter {
+                                x: surface_x,
+                                y: surface_y,
+                            },
+                        })
+                        .unwrap();
                 }
                 wl_pointer::Event::Leave { surface, .. } => {
-                    filter_events_sender.send(Event::WindowEvent { window: WindowId::from_wayland(surface.as_ref().id()), event: WindowEvent::MouseLeave { x: 0.0, y: 0.0 } }).unwrap();
+                    filter_events_sender
+                        .send(Event::WindowEvent {
+                            window: WindowId::from_wayland(surface.as_ref().id()),
+                            event: WindowEvent::MouseLeave { x: 0.0, y: 0.0 },
+                        })
+                        .unwrap();
                 }
                 wl_pointer::Event::Motion {
                     surface_x,
                     surface_y,
                     ..
                 } => {
-                    filter_events_sender.send(Event::WindowEvent { window: WindowId::from_wayland(0), event: WindowEvent::MouseMove { x: surface_x, y: surface_y } }).unwrap();
+                    filter_events_sender
+                        .send(Event::WindowEvent {
+                            window: WindowId::from_wayland(0),
+                            event: WindowEvent::MouseMove {
+                                x: surface_x,
+                                y: surface_y,
+                            },
+                        })
+                        .unwrap();
                 }
                 wl_pointer::Event::Button { button, state, .. } => {
                     if button & 0x110 != 0x110 {
@@ -94,6 +118,8 @@ impl Connection {
                         0 => MouseButton::Left,
                         1 => MouseButton::Right,
                         2 => MouseButton::Middle,
+                        3 => MouseButton::Side,
+                        4 => MouseButton::Extra,
                         _ => {
                             return;
                         }
@@ -105,7 +131,17 @@ impl Connection {
                             return;
                         }
                     };
-                    filter_events_sender.send(Event::WindowEvent { window: WindowId::from_wayland(0), event: WindowEvent::MouseButton { x: 0.0, y: 0.0, state, button } }).unwrap();
+                    filter_events_sender
+                        .send(Event::WindowEvent {
+                            window: WindowId::from_wayland(0),
+                            event: WindowEvent::MouseButton {
+                                x: 0.0,
+                                y: 0.0,
+                                state,
+                                button,
+                            },
+                        })
+                        .unwrap();
                 }
                 _ => {}
             },
@@ -128,7 +164,6 @@ impl Connection {
             });
 
         Ok(Self {
-            display,
             event_queue: Mutex::new(event_queue),
             events_sender,
             events_receiver,
@@ -144,65 +179,97 @@ impl Connection {
     pub fn poll_event(&self) -> Result<Option<Event>, OSError> {
         if let Ok(mut event) = self.events_receiver.try_recv() {
             return match event {
-                Event::WindowEvent { window, event: WindowEvent::MouseEnter { x, y } } => {
-                    self.mouse_on_surface.store(Some((window.to_wayland(), x, y)), atomic::Ordering::Relaxed);
+                Event::WindowEvent {
+                    window,
+                    event: WindowEvent::MouseEnter { x, y },
+                } => {
+                    self.mouse_on_surface
+                        .store(Some((window.to_wayland(), x, y)), atomic::Ordering::Relaxed);
                     if self.windows.read().get(&window).is_some() {
                         Ok(Some(event))
-                    }
-                    else {
+                    } else {
                         Ok(None)
                     }
-                },
-                Event::WindowEvent { window, event: WindowEvent::MouseLeave { ref mut x, ref mut y } } => {
+                }
+                Event::WindowEvent {
+                    window,
+                    event:
+                        WindowEvent::MouseLeave {
+                            ref mut x,
+                            ref mut y,
+                        },
+                } => {
+                    self.mouse_on_surface.store(None, atomic::Ordering::Relaxed);
                     match self.mouse_on_surface.load(atomic::Ordering::Relaxed) {
                         Some((surface, rx, ry)) if surface == window.to_wayland() => {
                             *x = rx;
                             *y = ry;
-                        },
+                        }
                         _ => {
                             return Ok(None);
                         }
                     }
                     if self.windows.read().get(&window).is_some() {
                         Ok(Some(event))
-                    }
-                    else {
+                    } else {
                         Ok(None)
                     }
-                },
-                Event::WindowEvent { ref mut window, event: WindowEvent::MouseMove { x, y } } => {
+                }
+                Event::WindowEvent {
+                    ref mut window,
+                    event: WindowEvent::MouseMove { x, y },
+                } => {
                     let surface = match self.mouse_on_surface.load(atomic::Ordering::Relaxed) {
                         Some((surface, _, _)) => surface,
-                        None => return Ok(None)
+                        None => return Ok(None),
                     };
-                    self.mouse_on_surface.store(Some((surface, x, y)), atomic::Ordering::Relaxed);
-                    if self.windows.read().get(&WindowId::from_wayland(surface)).is_some() {
+                    self.mouse_on_surface
+                        .store(Some((surface, x, y)), atomic::Ordering::Relaxed);
+                    if self
+                        .windows
+                        .read()
+                        .get(&WindowId::from_wayland(surface))
+                        .is_some()
+                    {
                         *window = WindowId::from_wayland(surface);
                         Ok(Some(event))
-                    }
-                    else {
+                    } else {
                         Ok(None)
                     }
-                },
-                Event::WindowEvent { ref mut window, event: WindowEvent::MouseButton { ref mut x, ref mut y, button, state } } => {
+                }
+                Event::WindowEvent {
+                    ref mut window,
+                    event:
+                        WindowEvent::MouseButton {
+                            ref mut x,
+                            ref mut y,
+                            button: _,
+                            state: _,
+                        },
+                } => {
                     let surface = match self.mouse_on_surface.load(atomic::Ordering::Relaxed) {
                         Some((surface, rx, ry)) => {
                             *x = rx;
                             *y = ry;
                             surface
-                        },
-                        None => return Ok(None)
+                        }
+                        None => return Ok(None),
                     };
-                    self.mouse_on_surface.store(Some((surface, *x, *y)), atomic::Ordering::Relaxed);
-                    if self.windows.read().get(&WindowId::from_wayland(surface)).is_some() {
+                    self.mouse_on_surface
+                        .store(Some((surface, *x, *y)), atomic::Ordering::Relaxed);
+                    if self
+                        .windows
+                        .read()
+                        .get(&WindowId::from_wayland(surface))
+                        .is_some()
+                    {
                         *window = WindowId::from_wayland(surface);
                         Ok(Some(event))
-                    }
-                    else {
+                    } else {
                         Ok(None)
                     }
-                },
-                ev@_ => Ok(Some(ev))
+                }
+                ev @ _ => Ok(Some(ev)),
             };
         }
         self.event_queue

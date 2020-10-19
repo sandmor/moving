@@ -24,30 +24,22 @@ fn main() {
                 *control_flow = ControlFlow::Exit
             }
             Event::MainEventsCleared => {
-                let size = window.size();
-                let w = size.width;
-                let h = size.height;
-                let frame_buffer = window.frame_buffer();
-                let mut x = 0.0;
-                let mut y = 0.0;
-                let cx = w / 2.0;
-                let cy = h / 2.0;
+                let surface = window.surface();
+                let cx = (surface.width() as f64) / 2.0;
+                let cy = (surface.height() as f64) / 2.0;
                 let t = Instant::now().duration_since(start).as_millis() as f64;
-                for i in 0..frame_buffer.len() / 4 {
-                    x += 1.0;
-                    if x >= w {
-                        x = 0.0;
-                        y += 1.0;
+                for y in 0..surface.height() {
+                    for x in 0..surface.width() {
+                        let rx = (x as f64) - cx;
+                        let ry = (y as f64) - cy;
+                        let blue = ((((f64::sqrt(rx * rx + ry * ry)
+                            + (f64::atan2(rx, ry) * 40.0 + t))
+                            * 10.0)
+                            % 512.0)
+                            - 256.0)
+                            .abs() as u8;
+                        surface.put_u32_pixel(x as u32, y as u32, (128 << 24) | (blue as u32));
                     }
-                    let rx = x - cx;
-                    let ry = y - cy;
-                    frame_buffer[i * 4] = ((((f64::sqrt(rx * rx + ry * ry)
-                        + (f64::atan2(rx, ry) * 40.0 + t))
-                        * 10.0)
-                        % 512.0)
-                        - 256.0)
-                        .abs() as u8;
-                    frame_buffer[i * 4 + 3] = 128;
                 }
                 window.redraw();
             }

@@ -3,20 +3,26 @@ use frame::*;
 
 use super::Connection;
 use crate::{
+    dpi::LogicalSize,
     error::OSError,
     event::*,
     platform::{WindowId, WindowPlatformData},
-    window as mwin, Size,
+    surface::{self, Surface},
+    window as mwin,
 };
+use atomic::Atomic;
 use libc::{mmap, munmap, MAP_FAILED, MAP_SHARED, PROT_READ, PROT_WRITE};
 use parking_lot::RwLock;
 use std::{
     os::unix::io::AsRawFd,
-    ptr::{null_mut, NonNull},
-    sync::Arc,
+    ptr::null_mut,
+    sync::{
+        atomic::{AtomicPtr, Ordering},
+        Arc,
+    },
 };
 use wayland_client::{
-    protocol::{wl_shm::Format, wl_shm_pool::WlShmPool, wl_surface::WlSurface},
+    protocol::{wl_shm::Format, wl_surface::WlSurface},
     Main,
 };
 use wayland_protocols::xdg_shell::client::xdg_toplevel::XdgToplevel;
@@ -24,28 +30,18 @@ use wayland_protocols::xdg_shell::client::xdg_toplevel::XdgToplevel;
 #[derive(Debug)]
 pub struct Window {
     xdg_toplevel: Main<XdgToplevel>,
-    surface: Main<WlSurface>,
     buf_x: i32,
     buf_y: i32,
-    pixels_box: Arc<RwLock<mwin::PixelsBox>>,
+    surface: Surface,
+    wl_surface: Main<WlSurface>,
     frame: Option<Frame>,
 }
 
 impl Connection {
-    pub fn create_window(
-        &self,
-        builder: mwin::WindowBuilder,
-    ) -> Result<
-        (
-            u32,
-            Arc<RwLock<WindowPlatformData>>,
-            Arc<RwLock<mwin::PixelsBox>>,
-        ),
-        OSError,
-    > {
-        let surface = self.compositor.create_surface();
-        let surface_id = surface.as_ref().id();
-        let xdg_surface = self.xdg_wm_base.get_xdg_surface(&surface);
+    pub fn create_window(&self, builder: mwin::WindowBuilder) -> Result<mwin::Window, OSError> {
+        let wl_surface = self.compositor.create_surface();
+        let surface_id = wl_surface.as_ref().id();
+        let xdg_surface = self.xdg_wm_base.get_xdg_surface(&wl_surface);
         let xdg_toplevel = xdg_surface.get_toplevel();
 
         xdg_toplevel.set_title(builder.title.clone());
@@ -78,43 +74,60 @@ impl Connection {
             }
         });
 
-        surface.commit();
+        wl_surface.commit();
 
         if builder.decorations {
-            return self.build_framed_window(builder, xdg_toplevel, xdg_surface, surface);
+            return self.build_framed_window(builder, xdg_toplevel, wl_surface);
         }
 
         let buf_x: i32 = builder.width as i32;
         let buf_y: i32 = builder.height as i32;
 
-        let (frame_buffer_ptr, frame_buffer_len) = self.setup_surface(&surface, buf_x, buf_y);
+        let (frame_buffer_ptr, frame_buffer_len) = self.setup_surface(&wl_surface, buf_x, buf_y);
 
-        let pixels_box = Arc::new(RwLock::new(mwin::PixelsBox::from_raw(
-            Size::new(builder.width, builder.height),
-            frame_buffer_ptr,
-            frame_buffer_len,
-        )));
+        let frame_buffer_ptr = AtomicPtr::new(frame_buffer_ptr);
+        let shared_data = surface::SharedData {
+            buffer_len: frame_buffer_len,
+            width: buf_x as u32,
+            height: buf_y as u32,
+        };
+
+        let surface = Surface::new(
+            surface::Format::Argb8888,
+            Arc::new((frame_buffer_ptr, Atomic::new(shared_data))),
+        );
 
         let window = Arc::new(RwLock::new(WindowPlatformData::Wayland(Window {
             xdg_toplevel,
-            surface,
+            surface: surface.clone(),
+            wl_surface,
             buf_x,
             buf_y,
-            pixels_box: pixels_box.clone(),
             frame: None,
         })));
-        self.windows.write().insert(WindowId::from_wayland(surface_id), window.clone());
-        Ok((surface_id, window, pixels_box))
+        self.windows
+            .write()
+            .insert(WindowId::from_wayland(surface_id), window.clone());
+        Ok(mwin::Window {
+            id: WindowId::from_wayland(surface_id),
+            surface,
+            logical_size: Arc::new(Atomic::new(LogicalSize {
+                w: builder.width,
+                h: builder.height,
+            })),
+            dpi: Arc::new(Atomic::new(1.0)),
+            platform_data: window,
+        })
     }
 
     pub fn redraw_window(&self, window: &Window) {
-        window.surface.damage(0, 0, window.buf_x, window.buf_y);
-        window.surface.commit();
+        window.wl_surface.damage(0, 0, window.buf_x, window.buf_y);
+        window.wl_surface.commit();
         if let Some(ref frame) = window.frame {
             frame
-                .surface
+                .wl_surface
                 .damage(0, 0, frame.frame_width, frame.header_bar_height);
-            frame.surface.commit();
+            frame.wl_surface.commit();
         }
     }
 
@@ -122,22 +135,24 @@ impl Connection {
         window.xdg_toplevel.destroy();
         unsafe {
             munmap(
-                window.pixels_box.read().frame_buffer_ptr().as_ptr() as *mut _,
-                window.pixels_box.read().frame_buffer_len(),
+                window.surface.shared().0.load(Ordering::SeqCst) as *mut _,
+                window.surface.shared().1.load(Ordering::SeqCst).buffer_len,
             );
         }
-        window.surface.destroy();
+        window.wl_surface.destroy();
         if let Some(ref frame) = window.frame {
             unsafe {
                 munmap(
-                    frame.pixels_box.frame_buffer_ptr().as_ptr() as *mut _,
-                    frame.pixels_box.frame_buffer_len(),
+                    frame.surface.shared().0.load(Ordering::SeqCst) as *mut _,
+                    frame.surface.shared().1.load(Ordering::SeqCst).buffer_len,
                 );
             }
-            frame.surface.destroy();
+            frame.wl_surface.destroy();
         }
         window.xdg_toplevel.destroy();
-        self.windows.write().remove(&WindowId::from_wayland(window.surface.as_ref().id()));
+        self.windows
+            .write()
+            .remove(&WindowId::from_wayland(window.wl_surface.as_ref().id()));
         Ok(())
     }
 
@@ -146,7 +161,7 @@ impl Connection {
         buffer_surface: &Main<WlSurface>,
         buf_width: i32,
         buf_height: i32,
-    ) -> (NonNull<u8>, usize) {
+    ) -> (*mut u8, usize) {
         let buf_len = (buf_width * buf_height) * 4;
         let tmp = tempfile::tempfile().expect("Unable to create a tempfile.");
         tmp.set_len(buf_len as u64).unwrap();
@@ -190,7 +205,6 @@ impl Connection {
         };
         assert_ne!(in_memory_addr, MAP_FAILED);
 
-        let buf_ptr = NonNull::new(in_memory_addr as *mut u8).unwrap();
-        (buf_ptr, buf_len)
+        (in_memory_addr as *mut _, buf_len)
     }
 }

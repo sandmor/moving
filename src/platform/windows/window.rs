@@ -1,5 +1,4 @@
-use super::*;
-use crate::{error::OSError, window as mwin, Size};
+use atomic::Atomic;
 use parking_lot::RwLock;
 use std::{
     ffi::OsStr,
@@ -7,15 +6,19 @@ use std::{
     iter,
     os::windows::ffi::OsStrExt,
     ptr::{self, NonNull},
-    sync::Arc,
+    sync::{Arc, atomic::AtomicPtr},
 };
 use winapi::um::{
     libloaderapi::GetModuleHandleW,
     winuser::{
-        CreateWindowExW, DefWindowProcW, PostQuitMessage, RegisterClassW, CS_HREDRAW, CS_OWNDC,
+        CreateWindowExW, DefWindowProcW, PostQuitMessage, RegisterClassW, GetDpiForWindow, GetDC, GetDesktopWindow, CS_HREDRAW, CS_OWNDC,
         CS_VREDRAW, WNDCLASSW, WS_MINIMIZEBOX, WS_OVERLAPPEDWINDOW, WS_SYSMENU, WS_VISIBLE,
     },
+    wingdi::{BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, CreateDIBSection}
 };
+
+use super::*;
+use crate::{error::OSError, window as mwin, Size, dpi::LogicalSize, surface::{self, Surface}};
 
 fn win32_string(value: &str) -> Vec<u16> {
     OsStr::new(value)
@@ -73,17 +76,29 @@ impl Connection {
             if handle.is_null() {
                 return Err(Error::last_os_error().into());
             }
+            let bmi = BITMAPINFO {
+                bmiHeader: BITMAPINFOHEADER {
+                    biSize: mem::size_of::<BITMAPINFOHEADER>(),
+                    biWidth: builder.width as i32,
+                    biHeight: -builder.height as i32,
+                    biPlanes: 1,
+                    biBitCount: 32,
+                    biCompression: BI_RGB,
+                    .. Default::default()
+                },
+                .. Default::default()
+            };
+            let h_desk_dc = GetDC(GetDesktopWindow());
+            CreateDIBSection(h_desk_dc, &bmi, DIB_RGB_COLORS, , 0, 0);
             let frame_buffer_len = (builder.width as usize) * (builder.height as usize) * 4;
             let mut buffer = Vec::with_capacity(frame_buffer_len);
 
             let frame_buffer_ptr: NonNull<u8> =
                 NonNull::new(buffer.as_mut_slice().as_mut_ptr()).unwrap();
 
-            let pixels_box = Arc::new(RwLock::new(mwin::PixelsBox::from_raw(
-                Size::new(builder.width, builder.height),
-                frame_buffer_ptr,
-                frame_buffer_len,
-            )));
+            let shared = Arc::new((AtomicPtr::new(buffer.as_mut_slice().as_mut_ptr()), Atomic::new((surface::SharedData { buffer_len: buffer.len(), width: builder.width as u32, height: builder.height as u32 }))));
+
+            let surface = Surface::new(builder.surface_format, shared);
 
             let platform_data = Arc::new(RwLock::new(WindowPlatformData { buffer }));
 
@@ -91,7 +106,12 @@ impl Connection {
             self.windows.write().insert(id, platform_data.clone());
             Ok(mwin::Window {
                 id,
-                pixels_box,
+                surface,
+                logical_size: Arc::new(Atomic::new(LogicalSize {
+                    w: builder.width,
+                    h: builder.height,
+                })),
+                dpi: Arc::new(Atomic::new(GetDpiForWindow(handle) as f64)),
                 platform_data,
             })
         }

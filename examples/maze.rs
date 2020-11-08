@@ -260,9 +260,9 @@ fn main() {
                 } else {
                     return;
                 }
-                let size = window.size();
-                let w = size.width as usize;
-                let h = size.height as usize;
+                let surface = window.surface();
+                let w = surface.width() as usize;
+                let h = surface.height() as usize;
                 let frame_buffer = window.frame_buffer();
                 //frame_buffer.iter_mut().for_each(|p| *p = 255);
                 let maze_cell = 1;

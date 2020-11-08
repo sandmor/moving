@@ -6,8 +6,9 @@ use winapi::{
         minwindef::{LPARAM, LRESULT, UINT, WPARAM},
         windef::HWND,
     },
-    um::winuser::DefWindowProcW,
+    um::winuser::{DefWindowProcW, PeekMessageA, TranslateMessage, DispatchMessageA, MSG, PM_REMOVE},
 };
+use std::ptr;
 
 lazy_static! {
     static ref EVENTS_CHANNEL: (flume::Sender<Event>, flume::Receiver<Event>) = flume::unbounded();
@@ -15,6 +16,13 @@ lazy_static! {
 
 impl Connection {
     pub fn poll_event(&self) -> Result<Option<Event>, OSError> {
+        unsafe {
+            let mut msg: MSG = std::mem::zeroed();
+            if PeekMessageA(&mut msg, ptr::null_mut(), 0, 0, PM_REMOVE) > 0 {
+                TranslateMessage(&msg);
+                DispatchMessageA(&msg);
+            }
+        }
         Ok(EVENTS_CHANNEL.1.try_recv().ok())
     }
 }
@@ -26,8 +34,6 @@ pub(super) unsafe extern "system" fn window_proc(
     l_param: LPARAM,
 ) -> LRESULT {
     if msg == WM_DESTROY {
-        //IS_WINDOW_CLOSED = true;
-
         //PostQuitMessage(0);
         println!("HIT");
         EVENTS_CHANNEL

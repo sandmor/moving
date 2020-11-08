@@ -1,8 +1,10 @@
 use atomic::Atomic;
-use std::sync::{
+use std::{sync::{
     atomic::{AtomicPtr, Ordering},
     Arc,
-};
+}, slice};
+
+pub(crate) type Shared = Arc<(AtomicPtr<u8>, Atomic<SharedData>)>;
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum Format {
@@ -31,7 +33,7 @@ pub struct Surface {
 }
 
 impl Surface {
-    pub(crate) fn new(format: Format, shared: Arc<(AtomicPtr<u8>, Atomic<SharedData>)>) -> Self {
+    pub(crate) fn new(format: Format, shared: Shared) -> Self {
         Self { format, shared }
     }
 
@@ -62,6 +64,12 @@ impl Surface {
         }
         unsafe {
             *(self.shared.0.load(Ordering::SeqCst) as *mut u32).offset(offset as isize) = pixel;
+        }
+    }
+
+    pub fn data_mut(&self) -> &mut [u8] {
+        unsafe {
+            slice::from_raw_parts_mut(self.shared.0.load(Ordering::SeqCst), self.shared.1.load(Ordering::SeqCst).buffer_len)
         }
     }
 }

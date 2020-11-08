@@ -180,6 +180,10 @@ impl Connection {
                     let id = data_offer.as_ref().id();
                     dev_data_offers.borrow_mut().insert(id, DataOffer::from_wl(data_offer));
                 },
+                Event::Selection { id: Some(data_offer) } => {
+                    // This kind of data offer don't interest us for now
+                    dev_data_offers.borrow_mut().remove(&data_offer.as_ref().id());
+                },
                 _ => {}
             }
         });
@@ -199,8 +203,13 @@ impl Connection {
     }
 
     pub fn poll_event(&self) -> Result<Option<Event>, OSError> {
+        println!("Poll event");
+        self.event_queue
+            .lock()
+            .sync_roundtrip(&mut (), |_, _, _| { /* we ignore unfiltered messages */ })
+            .unwrap();
         if let Ok(mut event) = self.events_receiver.try_recv() {
-            return match event {
+            match event {
                 Event::WindowEvent {
                     window,
                     event: WindowEvent::MouseEnter { x, y },
@@ -292,13 +301,11 @@ impl Connection {
                     }
                 }
                 ev @ _ => Ok(Some(ev)),
-            };
+            }
         }
-        self.event_queue
-            .lock()
-            .sync_roundtrip(&mut (), |_, _, _| { /* we ignore unfiltered messages */ })
-            .unwrap();
-        Ok(self.events_receiver.try_recv().ok())
+        else {
+            Ok(None)
+        }
     }
 }
 

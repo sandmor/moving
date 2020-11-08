@@ -16,6 +16,7 @@ impl DataOffer {
             use wayland_client::protocol::wl_data_offer::Event;
             match event {
                 Event::Offer { mime_type } => {
+                    println!("{}", mime_type);
                     let mime_type = match mime_type.parse() {
                         Ok(mime_type) => mime_type,
                         Err(_) => {

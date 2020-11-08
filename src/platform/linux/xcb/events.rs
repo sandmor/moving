@@ -46,7 +46,7 @@ impl Connection {
         }
         #[cfg(feature = "windows")]
         match event {
-            XEvent::ButtonPress(e) => {
+            XEvent::ButtonPress(e) | XEvent::ButtonRelease(e) => {
                 let state = match event {
                     XEvent::ButtonPress(_) => ButtonState::Pressed,
                     XEvent::ButtonRelease(_) => ButtonState::Released,
